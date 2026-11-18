@@ -19,12 +19,14 @@ const CONTRACTS = [
   {id:'matches',icon:'🏁',title:'Ready to Compete',desc:'Finish one first-to-five match.',reward:320,goal:1}
 ];
 const $ = id => document.getElementById(id);
+const bootStartedAt=Date.now();
+function setLoadingProgress(percent,label){const f=$('loading-fill'),s=$('loading-status');if(f)f.style.width=Math.max(0,Math.min(100,percent))+'%';if(s&&label)s.textContent=label;}
 const state = {
   mode:'loadout', map:MAPS[0], screen:'welcome', credits:0, nickname:'Rookie',
   session:null, user:null, loadout:{movement:GEAR.movement[0],utility:GEAR.utility[0],support:GEAR.support[0],style:GEAR.style[0]},
   upgrades:{moveSpeed:0,jump:0,stamina:0,recharge:0,zoneControl:0}, upgradePoints:0,
   contracts:Object.fromEntries(CONTRACTS.map(c=>[c.id,{progress:0,claimed:false}])),
-  socket:null, queued:false, roomId:null, local:false, playerId:'guest', serverTimeScale:1,
+  socket:null, queued:false, roomId:null, local:false, playerId:'guest', serverTimeScale:1,stamina:100,bootComplete:false,
   scoreA:0,scoreB:0, roundWinsA:0,roundWinsB:0, scoreTimer:0,
   checkpointCount:0, zoneSeconds:0, matchStart:0, completedMatches:0, nextCheckpoint:0
 };
@@ -32,6 +34,7 @@ const keys = new Set();
 let renderer,scene,camera,clock,player,playerModel,worldGroup,zoneGroup;
 let yaw=0,pitch=.18,cameraDistance=5.2,sensitivity=1;
 let velocity=new THREE.Vector3(), onGround=true, crouching=false, rolling=false, rollTime=0, rollDir=new THREE.Vector3(0,0,-1);
+let sprinting=false,mobileSprintHeld=false,matchWakeController=null;
 let aiming=false, landingPulse=0;
 let nearest=null, interactables=[], checkpoints=[], remotes=new Map(), toastTimer=0;
 let localZoneTimer=0, zoneMaterial, zoneRing, currentWorld='lobby';
@@ -40,6 +43,7 @@ const UP = new THREE.Vector3(0,1,0);
 init();
 
 function init(){
+  setLoadingProgress(12,'INITIALIZING DISPLAY');
   try {
     renderer = new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -50,7 +54,9 @@ function init(){
     renderer.toneMapping=THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure=1.15;
     $('world').appendChild(renderer.domElement);
+    setLoadingProgress(42,'BUILDING ARENA');
   } catch (err) {
+    $('loading-screen').hidden=true;
     $('world').innerHTML='<div class="fatal">WORTH needs WebGL enabled in this browser.</div>';
     console.error(err); return;
   }
@@ -72,23 +78,26 @@ function init(){
   scene.add(player);
   playerModel=player;
   buildWorld('lobby',state.map);
+  setLoadingProgress(78,'PREPARING CONTROLS');
   bindUI();
+  setLoadingProgress(91,'LOADING PLAYER PROFILE');
   loadSession();
   onResize();
   addEventListener('resize',onResize);
-  renderer.domElement.addEventListener('click',()=>{if(!canUseGameControls())return;if(!document.pointerLockElement)renderer.domElement.requestPointerLock?.();});
+  renderer.domElement.addEventListener('click',()=>{if(canUseGameControls())lockMouse();});
   renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
   renderer.domElement.addEventListener('mousedown',e=>{
     if(e.button!==2||!canUseGameControls())return;
     e.preventDefault();
     setAiming(true);
-    if(!document.pointerLockElement)renderer.domElement.requestPointerLock?.();
+    if(!document.pointerLockElement)lockMouse();
   });
   document.addEventListener('mouseup',e=>{if(e.button===2)setAiming(false);});
   document.addEventListener('pointerlockchange',()=>{
-    if(document.pointerLockElement===renderer.domElement)toast('MOUSE LOOK ACTIVE · RMB TO FOCUS');
+    if(document.pointerLockElement===renderer.domElement)toast('MOUSE LOCKED · ESC FOR SETTINGS');
     else if(aiming)setAiming(false);
   });
+  document.addEventListener('pointerlockerror',()=>toast('MOUSE LOCK FAILED · CLICK THE ARENA TO RETRY'));
   document.addEventListener('mousemove',e=>{
     if(document.pointerLockElement===renderer.domElement){
       yaw-=e.movementX*.0022*sensitivity;
@@ -100,6 +109,11 @@ function init(){
   renderer.setAnimationLoop(animate);
 }
 
+function lockMouse(){
+  if(!renderer?.domElement||!canUseGameControls()||document.pointerLockElement===renderer.domElement)return;
+  try{const req=renderer.domElement.requestPointerLock?.();req?.catch?.(()=>toast('CLICK THE ARENA TO CAPTURE THE MOUSE'));}
+  catch{toast('CLICK THE ARENA TO CAPTURE THE MOUSE');}
+}
 function mat(color,rough=.65,metal=.1,emissive=null,intensity=0){
   return new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal,emissive:emissive??0x000000,emissiveIntensity:intensity});
 }
@@ -160,15 +174,19 @@ function createPlayer(color=0x5ce5ed){
   }
   const ring=new THREE.Mesh(new THREE.TorusGeometry(.42,.035,8,36),new THREE.MeshStandardMaterial({color:color,emissive:color,emissiveIntensity:.65}));
   ring.rotation.x=Math.PI/2;ring.position.y=.05;g.add(ring);
+  // Center pivot makes the roll a forward somersault, not a sideways fall.
+  const rollPivot=new THREE.Group();rollPivot.position.y=.85;
+  for(const child of [...g.children]){g.remove(child);child.position.y-=.85;rollPivot.add(child);}
+  g.add(rollPivot);
   g.userData={
-    body,bodyPivot,head,headPivot,arms,legs,ring,cameraAnchor,baseColor:color,
+    body,bodyPivot,head,headPivot,arms,legs,ring,cameraAnchor,rollPivot,baseColor:color,
     animTime:Math.random()*4,targetPosition:new THREE.Vector3(),targetYaw:0
   };
   return g;
 }
-function animateCharacter(model,dt,moving,isRolling,isCrouching,inAir,landPulse=0){
+function animateCharacter(model,dt,moving,isRolling,isCrouching,inAir,landPulse=0,isSprinting=false){
   const rig=model?.userData;if(!rig)return;
-  rig.animTime=(rig.animTime||0)+dt*(moving?8.8:1.55);
+  rig.animTime=(rig.animTime||0)+dt*(isSprinting?12.2:moving?8.8:1.55);
   const phase=rig.animTime;
   const stride=moving?1:0;
   const crouch=isCrouching?1:0;
@@ -185,8 +203,8 @@ function animateCharacter(model,dt,moving,isRolling,isCrouching,inAir,landPulse=
     arm.rotation.x=-gait*stride*.55*side-airborne*.72+roll*(index===0?-.55:.55);
     arm.rotation.z=side*(.12+crouch*.3+airborne*.1);
   });
-  rig.bodyPivot.rotation.x=(moving ? .055 : 0)+airborne*.06+roll*-.32+crouch*.18;
-  rig.bodyPivot.position.y=1.02+Math.sin(phase*2)*.025*(moving?1:.45)-landPulse*.34;
+  rig.bodyPivot.rotation.x=(moving ? .055 : 0)+airborne*.06+roll*-.06+crouch*.18+(isSprinting?-.08:0);
+  rig.bodyPivot.position.y=.17+Math.sin(phase*2)*.025*(moving?1:.45)-landPulse*.12;
   rig.bodyPivot.scale.set(1,1-landPulse*.16,1);
   rig.headPivot.rotation.x=airborne*-.06+roll*.08;
   rig.headPivot.rotation.z=Math.sin(phase*.5)*.025;
@@ -276,6 +294,12 @@ function buildWorld(kind='lobby',mapName=MAPS[0]){
 }
 function onResize(){if(!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);}
 function onKeyDown(e){
+  if(e.code==='Escape'){
+    e.preventDefault();e.stopPropagation();keys.clear();sprinting=false;mobileSprintHeld=false;setAiming(false);
+    const openModals=[...document.querySelectorAll('.modal-wrap:not([hidden])')];
+    if(openModals.length)closeModal(openModals[openModals.length-1].id);else openModal('settings-modal');
+    return;
+  }
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
   if(e.repeat)return;
   keys.add(e.code);
@@ -290,7 +314,6 @@ function onKeyDown(e){
     if(moving&&!rolling){rolling=true;crouching=false;rollTime=.78;rollDir.copy(moveDirection());if(rollDir.lengthSq()<.01)rollDir.set(0,0,-1);toast('ROLL BOOST');}
     else if(!moving)crouching=true;
   }
-  if(e.code==='Escape'){keys.clear();setAiming(false);}
 }
 function onKeyUp(e){keys.delete(e.code);if(e.code==='ControlLeft'||e.code==='ControlRight')crouching=false;}
 function moveDirection(){
@@ -308,10 +331,19 @@ function updatePlayer(dt){
   const wasGrounded=onGround;
   const direction=moveDirection();
   const moving=direction.lengthSq()>.01;
-  const baseSpeed=6.1+state.upgrades.moveSpeed*.35;
-  let speed=baseSpeed;
+  if(rolling){
+    rollTime=Math.max(0,rollTime-dt);
+    const progress=1-rollTime/.78;
+    player.userData.rollPivot.rotation.x=-THREE.MathUtils.clamp(progress,0,1)*Math.PI*2;
+    if(rollTime<=0){rolling=false;player.userData.rollPivot.rotation.x=0;}
+  }else player.userData.rollPivot.rotation.x=0;
+  const wantsSprint=keys.has('ShiftLeft')||keys.has('ShiftRight')||mobileSprintHeld;
+  sprinting=!!(wantsSprint&&moving&&!rolling&&!crouching&&state.stamina>0);
+  state.stamina=THREE.MathUtils.clamp(state.stamina+(sprinting?-32:22)*dt,0,100);
+  let speed=6.1+state.upgrades.moveSpeed*.35;
+  if(sprinting)speed*=1.48;
   if(crouching)speed*=.55;
-  if(rolling){speed*=1.65;rollTime-=dt;if(rollTime<=0)rolling=false;}
+  if(rolling)speed*=1.65;
   if(state.loadout.movement==='Air Wing')speed*=1.035;
   const desired=direction.multiplyScalar(speed);
   const smoothing=1-Math.exp(-11*dt);
@@ -325,13 +357,13 @@ function updatePlayer(dt){
   player.position.z=THREE.MathUtils.clamp(player.position.z,-limit,limit);
   if(player.position.y<0){player.position.y=0;velocity.y=0;onGround=true;}
   if(!wasGrounded&&onGround&&velocity.y===0)landingPulse=.18;
-  player.rotation.y=yaw;
+  player.rotation.y=yaw;player.rotation.z=0;
   player.scale.y=THREE.MathUtils.lerp(player.scale.y,crouching ? .9 : 1,Math.min(1,dt*12));
-  if(rolling){
-    const progress=1-Math.max(0,rollTime)/.78;
-    player.rotation.z=Math.sin(progress*Math.PI)*.48;
-  }else player.rotation.z=THREE.MathUtils.lerp(player.rotation.z,0,Math.min(1,dt*8));
-  animateCharacter(player,dt,moving,rolling,crouching,!onGround,landingPulse);
+  animateCharacter(player,dt,moving,rolling,crouching,!onGround,landingPulse,sprinting);
+  $('stamina-hud').hidden=state.screen==='welcome';
+  $('stamina-fill').style.width=state.stamina+'%';
+  $('stamina-value').textContent=Math.round(state.stamina);
+  document.body.classList.toggle('sprinting',sprinting);
   landingPulse=Math.max(0,landingPulse-dt);
 }
 function updateCamera(dt){
@@ -415,15 +447,14 @@ function updateScoreHud(){
 function localPractice(){
   state.local=true;state.screen='practice';state.scoreA=0;state.scoreB=0;state.roundWinsA=0;state.roundWinsB=0;state.scoreTimer=0;state.nextCheckpoint=0;localZoneTimer=0;
   $('welcome-screen').hidden=true;$('pad-modal').hidden=true;$('match-modal').hidden=true;$('zone-hud').hidden=false;
-  buildWorld('practice',state.map);
-  document.exitPointerLock?.();
-  toast('PRACTICE STARTED · HOLD THE CENTRAL ZONE');
+  buildWorld('practice',state.map);lockMouse();
+  toast('PRACTICE STARTED · SHIFT TO SPRINT · CTRL TO ROLL');
 }
 function enterLobby(){
   state.screen='lobby';$('welcome-screen').hidden=true;$('world-hud').hidden=false;
-  buildWorld('lobby',state.map);toast('WELCOME TO THE ATRIUM');
+  buildWorld('lobby',state.map);lockMouse();toast('WELCOME TO THE ATRIUM');
 }
-function openModal(id){$(id).hidden=false;document.exitPointerLock?.();}
+function openModal(id){$(id).hidden=false;setAiming(false);document.exitPointerLock?.();}
 function closeModal(id){$(id).hidden=true;}
 function bindUI(){
   $('enter-lobby').addEventListener('click',enterLobby);
@@ -445,7 +476,10 @@ function bindUI(){
   $('hints-toggle').addEventListener('change',e=>$('bottom-hints').hidden=!e.target.checked);
   $('reduced-motion').addEventListener('change',e=>document.body.classList.toggle('reduced-motion',e.target.checked));
   $('mobile-jump').addEventListener('touchstart',e=>{e.preventDefault();if(onGround){velocity.y=8.1;onGround=false;}});
-  $('mobile-roll').addEventListener('touchstart',e=>{e.preventDefault();if(moveDirection().lengthSq()>.01){rolling=true;rollTime=.78;rollDir.copy(moveDirection());}});
+  $('mobile-roll').addEventListener('touchstart',e=>{e.preventDefault();if(moveDirection().lengthSq()>.01&&!rolling){rolling=true;rollTime=.78;rollDir.copy(moveDirection());}});
+  $('mobile-sprint').addEventListener('touchstart',e=>{e.preventDefault();mobileSprintHeld=true;});
+  $('mobile-sprint').addEventListener('touchend',()=>{mobileSprintHeld=false;});
+  $('mobile-sprint').addEventListener('touchcancel',()=>{mobileSprintHeld=false;});
   $('mobile-interact').addEventListener('touchstart',e=>{e.preventDefault();interact();});
   const stick=$('move-stick');let touchId=null;
   stick.addEventListener('touchstart',e=>{e.preventDefault();touchId=e.changedTouches[0].identifier;});
@@ -550,33 +584,68 @@ function socketUrl(){
   return base.replace(/^http:/,'ws:').replace(/^https:/,'wss:')+'/ws';
 }
 async function queueMatch(){
+  const base=(CONFIG.serverUrl||'').trim().replace(/\/+$/,'');
   const url=socketUrl();
-  if(!url){toast('ONLINE SERVER NOT SET UP YET · STARTING PRACTICE');closeModal('pad-modal');localPractice();return;}
-  openModal('match-modal');$('match-status').textContent='Connecting to the WORTH server…';
-  const ws=new WebSocket(url);state.socket=ws;state.queued=true;
+  openModal('match-modal');$('queue-ring').hidden=false;$('cancel-queue').textContent='CANCEL';
+  if(!url){
+    state.queued=false;$('queue-ring').hidden=true;$('match-title').textContent='SERVER NOT CONNECTED';
+    $('match-status').textContent='The multiplayer server is not linked yet. Deploy WORTH-Server on Render, then add its HTTPS URL to serverUrl in config.js.';
+    return;
+  }
+  $('match-title').textContent='WAKING MATCH SERVER';$('match-status').textContent='Contacting the WORTH server…';
+  state.queued=true;matchWakeController=new AbortController();
+  const wakeTimeout=setTimeout(()=>matchWakeController?.abort(),45000);
+  try{
+    const response=await fetch(base+'/health',{method:'GET',cache:'no-store',signal:matchWakeController.signal});
+    if(!response.ok)throw new Error('Health check returned HTTP '+response.status);
+  }catch(err){
+    if(!state.queued){clearTimeout(wakeTimeout);return;}
+    state.queued=false;$('queue-ring').hidden=true;$('match-title').textContent='SERVER UNAVAILABLE';
+    $('match-status').textContent=err?.name==='AbortError'?'The server did not wake within 45 seconds. Check its Render status and try again.':'Could not reach the server health check. Check the Render URL and CLIENT_ORIGIN settings.';
+    clearTimeout(wakeTimeout);matchWakeController=null;return;
+  }
+  clearTimeout(wakeTimeout);matchWakeController=null;
+  if(!state.queued)return;
+  $('match-title').textContent='FINDING A MATCH';$('match-status').textContent='Server online · opening secure match connection…';
+  const ws=new WebSocket(url);state.socket=ws;
   ws.addEventListener('open',async()=>{
-    const {data}=await supabase?.auth.getSession()||{data:{session:null}};
-    ws.send(JSON.stringify({type:'hello',token:data.session?.access_token||null,nickname:state.nickname}));
+    if(!state.queued||ws.readyState!==WebSocket.OPEN)return;
+    let accessToken=null;
+    try{const {data}=await supabase?.auth.getSession()||{data:{session:null}};accessToken=data.session?.access_token||null;}catch{}
+    if(ws.readyState!==WebSocket.OPEN)return;
+    ws.send(JSON.stringify({type:'hello',token:accessToken,nickname:state.nickname}));
     ws.send(JSON.stringify({type:'queue',map:state.map,mode:state.mode,loadout:state.loadout,upgrades:state.upgrades,additionPoints:state.upgradePoints}));
-    $('match-status').textContent='Searching for another player…';
+    $('match-status').textContent='Waiting for another player…';
   });
   ws.addEventListener('message',event=>{
     let msg;try{msg=JSON.parse(event.data);}catch{return;}
     handleServerMessage(msg);
   });
-  ws.addEventListener('error',()=>{$('match-status').textContent='Server connection failed. Try practice instead.';});
-  ws.addEventListener('close',()=>{if(state.queued){state.queued=false;$('match-status').textContent='Connection closed.';}});
+  ws.addEventListener('error',()=>{
+    $('queue-ring').hidden=true;$('match-title').textContent='CONNECTION FAILED';
+    $('match-status').textContent='The WebSocket could not connect. Check that Render is live and the client has the correct serverUrl.';
+  });
+  ws.addEventListener('close',()=>{
+    if(state.socket===ws)state.socket=null;
+    if(state.queued){state.queued=false;$('queue-ring').hidden=true;$('match-title').textContent='CONNECTION CLOSED';$('match-status').textContent='The server closed the matchmaking connection. Check Render logs for the cause.';}
+  });
 }
-function cancelQueue(){state.queued=false;state.socket?.close();state.socket=null;closeModal('match-modal');}
+function cancelQueue(){
+  state.queued=false;matchWakeController?.abort();matchWakeController=null;
+  if(state.socket?.readyState===WebSocket.OPEN||state.socket?.readyState===WebSocket.CONNECTING)state.socket.close();
+  state.socket=null;closeModal('match-modal');
+}
 function handleServerMessage(msg){
   if(msg.type==='queued'){$('match-status').textContent='Queued · '+msg.position+' player(s) ahead';return;}
   if(msg.type==='matchFound'){
-    state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.serverTimeScale=1;state.queued=false;closeModal('match-modal');closeModal('pad-modal');
+    state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.serverTimeScale=1;state.stamina=100;state.queued=false;closeModal('match-modal');closeModal('pad-modal');
     $('zone-hud').hidden=false;state.screen='online';buildWorld('practice',msg.map||state.map);$('world-name').textContent=msg.map.toUpperCase();toast('MATCH FOUND · FIRST TO 5 ROUNDS');return;
   }
   if(msg.type==='snapshot'){
     state.serverTimeScale=Number(msg.timeScale)===0.38 ? 0.38 : 1;
     if(msg.map&&msg.map!==state.map){state.map=msg.map;buildWorld('practice',state.map);}
+    const selfSnapshot=(msg.players||[]).find(p=>p.id===state.playerId);
+    if(selfSnapshot&&Number.isFinite(selfSnapshot.stamina))state.stamina=selfSnapshot.stamina;
     updateRemotePlayers(msg.players||[]);
     if(msg.score){state.scoreA=msg.score.self||0;state.scoreB=msg.score.opponent||0;}
     if(msg.roundWins){state.roundWinsA=msg.roundWins.self||0;state.roundWinsB=msg.roundWins.opponent||0;}
@@ -602,6 +671,8 @@ function updateRemotePlayers(players){
     let mesh=remotes.get(p.id);
     if(!mesh){mesh=createPlayer(0x9b86ff);mesh.userData.justCreated=true;scene.add(mesh);remotes.set(p.id,mesh);}
     mesh.userData.targetPosition.set(p.x||0,p.y||0,p.z||0);mesh.userData.targetYaw=p.yaw||0;
+    if(!!p.rolling&&!mesh.userData.remoteRolling)mesh.userData.remoteRollStarted=performance.now();
+    mesh.userData.remoteRolling=!!p.rolling;mesh.userData.remoteSprinting=!!p.sprinting;
     if(mesh.userData.justCreated){mesh.position.copy(mesh.userData.targetPosition);mesh.rotation.y=mesh.userData.targetYaw;mesh.userData.justCreated=false;}
   }
   for(const [id,mesh] of remotes){if(!seen.has(id)){scene.remove(mesh);remotes.delete(id);}}
@@ -613,7 +684,7 @@ function sendProfileUpdate(){
 }
 function sendInput(){
   if(state.socket?.readyState!==WebSocket.OPEN||!state.roomId)return;
-  state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space','ControlLeft','ControlRight'].includes(k)),yaw,roll:rolling,crouch:crouching,aim:aiming}));
+  state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space'].includes(k)),yaw,roll:rolling,crouch:crouching,sprint:sprinting,aim:aiming}));
 }
 let sendAccumulator=0;
 function animateRemotePlayers(realDt,simDt){
@@ -626,7 +697,11 @@ function animateRemotePlayers(realDt,simDt){
       Math.cos(mesh.userData.targetYaw-mesh.rotation.y)
     );
     mesh.rotation.y+=angle*(1-Math.exp(-15*realDt));
-    animateCharacter(mesh,simDt,gap>.025,false,false,false,0);
+    if(mesh.userData.remoteRolling){
+      const progress=THREE.MathUtils.clamp((performance.now()-(mesh.userData.remoteRollStarted||performance.now()))/780,0,1);
+      mesh.userData.rollPivot.rotation.x=-progress*Math.PI*2;
+    }else mesh.userData.rollPivot.rotation.x=0;
+    animateCharacter(mesh,simDt,gap>.025,mesh.userData.remoteRolling,false,false,0,mesh.userData.remoteSprinting);
   }
 }
 function animate(){
@@ -653,6 +728,11 @@ function animate(){
   }
   if(state.socket?.readyState===WebSocket.OPEN){sendAccumulator+=realDt;if(sendAccumulator>.05){sendAccumulator=0;sendInput();}}
   renderer.render(scene,camera);
+  if(!state.bootComplete){
+    state.bootComplete=true;setLoadingProgress(100,'READY');
+    const remaining=Math.max(0,420-(Date.now()-bootStartedAt));
+    setTimeout(()=>{const loader=$('loading-screen');if(!loader)return;loader.classList.add('is-hidden');setTimeout(()=>{loader.hidden=true;},500);},remaining);
+  }
 }
 function toast(message){
   const el=$('toast');el.textContent=message;el.classList.add('show');
