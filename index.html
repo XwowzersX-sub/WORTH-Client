@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090c18">
+  <meta name="description" content="WORTH — an arcade arena sport.">
+  <title>WORTH — Arena Sport</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.57.0"
+      }
+    }
+  </script>
+  <script src="./config.js"></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <div id="world"></div>
+  <div class="vignette"></div>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="WORTH home"><span class="brand-mark">W</span><span>WORTH</span></a>
+    <div class="top-center"><span class="live-dot"></span><span id="connection-label">LOCAL PRACTICE READY</span></div>
+    <div class="top-actions">
+      <span class="credits"><b>✦</b> <strong id="credits">0</strong></span>
+      <button class="small-btn" id="account-open">ACCOUNT</button>
+      <button class="small-btn" id="settings-open">SETTINGS</button>
+    </div>
+  </header>
+
+  <div class="crosshair"><i></i><i></i></div>
+  <div class="aim-reticle" id="aim-reticle" hidden><span></span></div>
+  <div class="aim-status" id="aim-status" hidden>HEAD CAM FOCUS · ARENA SPEED 38%</div>
+  <div class="hud-left" id="world-hud">
+    <div class="eyebrow">WORTH TRAINING GROUNDS</div>
+    <div class="world-title" id="world-name">THE ATRIUM</div>
+    <div class="world-sub" id="world-sub">Explore the hub · Find a challenge</div>
+  </div>
+  <div class="zone-hud" id="zone-hud" hidden>
+    <div class="zone-label">CENTRAL ZONE</div>
+    <div class="zone-score"><span id="score-a">0</span><small>—</small><span id="score-b">0</span></div>
+    <div class="zone-progress"><span id="zone-progress"></span></div>
+    <div class="zone-note" id="zone-note">Hold the glowing zone to score</div>
+  </div>
+  <div class="interact-prompt" id="interact-prompt" hidden><kbd>E</kbd><span id="interact-text">INTERACT</span></div>
+  <div class="bottom-hints" id="bottom-hints">
+    <span><kbd>W A S D</kbd> MOVE</span><span><kbd>SPACE</kbd> JUMP</span><span><kbd>CTRL</kbd> CROUCH / ROLL</span><span><kbd>RMB</kbd> HEAD CAM FOCUS</span><span><kbd>E</kbd> INTERACT</span><span><kbd>ESC</kbd> RELEASE MOUSE</span>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <section class="screen" id="welcome-screen">
+    <div class="welcome-card">
+      <div class="eyebrow"><span class="live-dot"></span> SEASON 01 · OPEN PLAY</div>
+      <h1>WORTH<span>.</span></h1>
+      <p class="tagline">Every move counts.</p>
+      <p class="welcome-copy">A fast, 3D arena sport. Learn the movement, take on challenges, and compete for the center.</p>
+      <button class="primary-btn" id="enter-lobby">ENTER THE ATRIUM <span>↗</span></button>
+      <button class="quiet-btn" id="quick-practice">JUMP INTO PRACTICE</button>
+      <div class="welcome-foot"><span>THIRD-PERSON ARENA</span><span>BUILD 0.1.0</span></div>
+    </div>
+    <div class="welcome-side">
+      <div class="side-orbit"></div>
+      <div class="side-copy"><span>01 / 05</span><b>FIND YOUR<br>OWN ROUTE.</b><small>Five arenas. Two rule sets. One goal: outplay the field.</small></div>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="account-modal" hidden>
+    <div class="modal">
+      <button class="close-btn" data-close="account-modal">×</button>
+      <div class="eyebrow">PLAYER PROFILE</div><h2>YOUR ACCOUNT</h2>
+      <p class="muted" id="account-status">Play locally as a guest or sign in to sync your progress.</p>
+      <div class="field"><label>EMAIL</label><input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+      <div class="field"><label>PASSWORD</label><input id="auth-password" type="password" autocomplete="current-password" placeholder="At least 8 characters"></div>
+      <div class="modal-actions"><button class="primary-btn" id="sign-in">SIGN IN</button><button class="outline-btn" id="sign-up">CREATE ACCOUNT</button></div>
+      <button class="quiet-btn" id="sign-out" hidden>SIGN OUT</button>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="settings-modal" hidden>
+    <div class="modal">
+      <button class="close-btn" data-close="settings-modal">×</button>
+      <div class="eyebrow">PREFERENCES</div><h2>SETTINGS</h2>
+      <div class="setting-row"><div><b>Mouse sensitivity</b><small>Camera look speed</small></div><input id="sensitivity" type="range" min="0.3" max="2" step="0.1" value="1"></div>
+      <div class="setting-row"><div><b>Camera distance</b><small>Third-person view</small></div><input id="camera-distance" type="range" min="4" max="10" step="0.5" value="5.2"></div>
+      <div class="setting-row"><div><b>Show control hints</b><small>On-screen movement guide</small></div><input id="hints-toggle" type="checkbox" checked></div>
+      <div class="setting-row"><div><b>Reduced motion</b><small>Less camera shake and visual movement</small></div><input id="reduced-motion" type="checkbox"></div>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="board-modal" hidden>
+    <div class="modal wide-modal">
+      <button class="close-btn" data-close="board-modal">×</button>
+      <div class="eyebrow">ATRIUM CONTRACT BOARD</div><h2>TAKE A CONTRACT</h2>
+      <p class="muted">Complete challenges to earn credits for cosmetic gear and movement effects.</p>
+      <div class="contract-list" id="contract-list"></div>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="pad-modal" hidden>
+    <div class="modal wide-modal">
+      <button class="close-btn" data-close="pad-modal">×</button>
+      <div class="eyebrow">PVP PAD · MATCH SETUP</div><h2>CHOOSE YOUR ARENA</h2>
+      <div class="mode-switch">
+        <button class="mode-btn active" data-mode="loadout">LOADOUT <small>Choose your gear</small></button>
+        <button class="mode-btn" data-mode="addition">ADDITION <small>Build your stats</small></button>
+      </div>
+      <div class="setup-grid">
+        <div><label class="field-label">ARENA</label><div class="map-list" id="map-list"></div></div>
+        <div><label class="field-label">YOUR SETUP</label><div id="loadout-panel"></div></div>
+      </div>
+      <div class="match-footer"><span>FIRST TO 5 ROUND WINS</span><button class="primary-btn" id="find-match">FIND MATCH <span>↗</span></button></div>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="match-modal" hidden>
+    <div class="modal">
+      <div class="eyebrow">MATCHMAKING</div><h2 id="match-title">FINDING A MATCH</h2>
+      <div class="queue-ring"></div><p class="muted" id="match-status">Connecting to the WORTH server…</p>
+      <button class="outline-btn" id="cancel-queue">CANCEL</button>
+      <button class="quiet-btn" id="practice-instead">PLAY PRACTICE INSTEAD</button>
+    </div>
+  </section>
+
+  <section class="result-banner" id="result-banner" hidden>
+    <div class="eyebrow">ROUND COMPLETE</div><h2 id="result-title">NICE RUN.</h2><p id="result-copy">You earned 100 credits.</p><button class="primary-btn" id="result-continue">CONTINUE</button>
+  </section>
+
+  <div class="mobile-controls" id="mobile-controls">
+    <div class="stick" id="move-stick"><span></span></div>
+    <div class="mobile-actions"><button id="mobile-jump">JUMP</button><button id="mobile-roll">ROLL</button><button id="mobile-interact">USE</button></div>
+  </div>
+</body>
+</html>
