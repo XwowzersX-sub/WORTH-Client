@@ -297,7 +297,10 @@ function onKeyDown(e){
   if(e.code==='Escape'){
     e.preventDefault();e.stopPropagation();keys.clear();sprinting=false;mobileSprintHeld=false;setAiming(false);
     const openModals=[...document.querySelectorAll('.modal-wrap:not([hidden])')];
-    if(openModals.length)closeModal(openModals[openModals.length-1].id);else openModal('settings-modal');
+    if(openModals.length){
+      const activeModal=openModals[openModals.length-1];
+      if(activeModal.id==='match-modal')cancelQueue();else closeModal(activeModal.id);
+    }else openModal('settings-modal');
     return;
   }
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
@@ -454,7 +457,7 @@ function enterLobby(){
   state.screen='lobby';$('welcome-screen').hidden=true;$('world-hud').hidden=false;
   buildWorld('lobby',state.map);lockMouse();toast('WELCOME TO THE ATRIUM');
 }
-function openModal(id){$(id).hidden=false;setAiming(false);document.exitPointerLock?.();}
+function openModal(id){keys.clear();crouching=false;sprinting=false;mobileSprintHeld=false;$(id).hidden=false;setAiming(false);document.exitPointerLock?.();}
 function closeModal(id){$(id).hidden=true;}
 function bindUI(){
   $('enter-lobby').addEventListener('click',enterLobby);
