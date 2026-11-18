@@ -594,14 +594,14 @@ async function queueMatch(){
   }
   $('match-title').textContent='WAKING MATCH SERVER';$('match-status').textContent='Contacting the WORTH server…';
   state.queued=true;matchWakeController=new AbortController();
-  const wakeTimeout=setTimeout(()=>matchWakeController?.abort(),45000);
+  const wakeTimeout=setTimeout(()=>matchWakeController?.abort(),90000);
   try{
     const response=await fetch(base+'/health',{method:'GET',cache:'no-store',signal:matchWakeController.signal});
     if(!response.ok)throw new Error('Health check returned HTTP '+response.status);
   }catch(err){
     if(!state.queued){clearTimeout(wakeTimeout);return;}
     state.queued=false;$('queue-ring').hidden=true;$('match-title').textContent='SERVER UNAVAILABLE';
-    $('match-status').textContent=err?.name==='AbortError'?'The server did not wake within 45 seconds. Check its Render status and try again.':'Could not reach the server health check. Check the Render URL and CLIENT_ORIGIN settings.';
+    $('match-status').textContent=err?.name==='AbortError'?'The server did not wake within 90 seconds. Check its Render status and try again.':'Could not reach the server health check. Check the Render URL and CLIENT_ORIGIN settings.';
     clearTimeout(wakeTimeout);matchWakeController=null;return;
   }
   clearTimeout(wakeTimeout);matchWakeController=null;
@@ -636,7 +636,7 @@ function cancelQueue(){
   state.socket=null;closeModal('match-modal');
 }
 function handleServerMessage(msg){
-  if(msg.type==='queued'){$('match-status').textContent='Queued · '+msg.position+' player(s) ahead';return;}
+  if(msg.type==='queued'){$('match-status').textContent='Waiting for another player · '+(msg.map||state.map)+' · '+(msg.mode||state.mode);return;}
   if(msg.type==='matchFound'){
     state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.serverTimeScale=1;state.stamina=100;state.queued=false;closeModal('match-modal');closeModal('pad-modal');
     $('zone-hud').hidden=false;state.screen='online';buildWorld('practice',msg.map||state.map);$('world-name').textContent=msg.map.toUpperCase();toast('MATCH FOUND · FIRST TO 5 ROUNDS');return;
@@ -684,7 +684,7 @@ function sendProfileUpdate(){
 }
 function sendInput(){
   if(state.socket?.readyState!==WebSocket.OPEN||!state.roomId)return;
-  state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space'].includes(k)),yaw,roll:rolling,crouch:crouching,sprint:sprinting,aim:aiming}));
+  state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space'].includes(k)),yaw,roll:rolling,rollX:rollDir.x,rollZ:rollDir.z,crouch:crouching,sprint:sprinting,aim:aiming}));
 }
 let sendAccumulator=0;
 function animateRemotePlayers(realDt,simDt){
