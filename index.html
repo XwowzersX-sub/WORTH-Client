@@ -20,6 +20,11 @@
 </head>
 <body>
   <div id="world"></div>
+  <div class="loading-screen" id="loading-screen" aria-live="polite">
+    <div class="loading-mark">W</div><div class="loading-brand">WORTH<span>.</span></div>
+    <div class="loading-subtitle">PREPARING THE ARENA</div><div class="loading-track"><span id="loading-fill"></span></div>
+    <div class="loading-status" id="loading-status">INITIALIZING DISPLAY</div>
+  </div>
   <div class="vignette"></div>
   <header class="topbar">
     <a class="brand" href="#" aria-label="WORTH home"><span class="brand-mark">W</span><span>WORTH</span></a>
@@ -39,6 +44,10 @@
     <div class="world-title" id="world-name">THE ATRIUM</div>
     <div class="world-sub" id="world-sub">Explore the hub · Find a challenge</div>
   </div>
+  <div class="stamina-hud" id="stamina-hud" hidden>
+    <div class="stamina-head"><span>STAMINA</span><b><span id="stamina-value">100</span>%</b></div>
+    <div class="stamina-track"><span id="stamina-fill"></span></div>
+  </div>
   <div class="zone-hud" id="zone-hud" hidden>
     <div class="zone-label">CENTRAL ZONE</div>
     <div class="zone-score"><span id="score-a">0</span><small>—</small><span id="score-b">0</span></div>
@@ -47,7 +56,7 @@
   </div>
   <div class="interact-prompt" id="interact-prompt" hidden><kbd>E</kbd><span id="interact-text">INTERACT</span></div>
   <div class="bottom-hints" id="bottom-hints">
-    <span><kbd>W A S D</kbd> MOVE</span><span><kbd>SPACE</kbd> JUMP</span><span><kbd>CTRL</kbd> CROUCH / ROLL</span><span><kbd>RMB</kbd> HEAD CAM FOCUS</span><span><kbd>E</kbd> INTERACT</span><span><kbd>ESC</kbd> RELEASE MOUSE</span>
+    <span><kbd>W A S D</kbd> MOVE</span><span><kbd>SHIFT</kbd> SPRINT</span><span><kbd>SPACE</kbd> JUMP</span><span><kbd>CTRL</kbd> ROLL</span><span><kbd>RMB</kbd> HEAD CAM FOCUS</span><span><kbd>E</kbd> INTERACT</span><span><kbd>ESC</kbd> SETTINGS</span>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -87,6 +96,7 @@
       <div class="setting-row"><div><b>Camera distance</b><small>Third-person view</small></div><input id="camera-distance" type="range" min="4" max="10" step="0.5" value="5.2"></div>
       <div class="setting-row"><div><b>Show control hints</b><small>On-screen movement guide</small></div><input id="hints-toggle" type="checkbox" checked></div>
       <div class="setting-row"><div><b>Reduced motion</b><small>Less camera shake and visual movement</small></div><input id="reduced-motion" type="checkbox"></div>
+      <div class="settings-controls"><b>QUICK CONTROLS</b><p>WASD move · Shift sprint · Space jump · Ctrl roll · Right mouse focus camera · E interact · Esc close settings</p></div>
     </div>
   </section>
 
@@ -118,7 +128,7 @@
   <section class="modal-wrap" id="match-modal" hidden>
     <div class="modal">
       <div class="eyebrow">MATCHMAKING</div><h2 id="match-title">FINDING A MATCH</h2>
-      <div class="queue-ring"></div><p class="muted" id="match-status">Connecting to the WORTH server…</p>
+      <div class="queue-ring" id="queue-ring"></div><p class="muted" id="match-status">Connecting to the WORTH server…</p>
       <button class="outline-btn" id="cancel-queue">CANCEL</button>
       <button class="quiet-btn" id="practice-instead">PLAY PRACTICE INSTEAD</button>
     </div>
@@ -130,7 +140,7 @@
 
   <div class="mobile-controls" id="mobile-controls">
     <div class="stick" id="move-stick"><span></span></div>
-    <div class="mobile-actions"><button id="mobile-jump">JUMP</button><button id="mobile-roll">ROLL</button><button id="mobile-interact">USE</button></div>
+    <div class="mobile-actions"><button id="mobile-sprint">SPRINT</button><button id="mobile-jump">JUMP</button><button id="mobile-roll">ROLL</button><button id="mobile-interact">USE</button></div>
   </div>
 </body>
 </html>
