@@ -22,20 +22,21 @@ Edit `config.js` and set `serverUrl` to the base HTTPS URL for the WORTH Render 
 serverUrl: "https://your-worth-server.onrender.com"
 ```
 
-The client converts that base URL to a secure WebSocket URL automatically. The initial value is blank so the game will not connect to an old or incorrectly configured Frontier service.
+The client converts that base URL to a secure WebSocket URL automatically and checks `/health` first to wake a sleeping Render service. The initial value is blank, so online matchmaking will remain disabled until you deploy WORTH-Server and put its HTTPS URL here. Two players must choose the same arena and mode to be matched.
 
 The Supabase URL and publishable key in `config.js` are public browser settings. **Never put a Supabase secret/service-role key in this repository.**
 
 ## Controls
 
 - **WASD**: Move
-- **Mouse**: Rotate the third-person shoulder camera
-- **Hold right mouse button**: Switch to first-person view from the helmet-mounted camera; match simulation slows to 38% speed for both players
-- **Space**: Jump; also cancels a roll
-- **Ctrl while standing still**: Crouch and move more slowly
+- **Mouse**: Captured on entering the Atrium; move to turn the shoulder camera
+- **Hold right mouse button**: Switch to the helmet-mounted focus camera; match simulation slows to 38% speed for both players
+- **Shift**: Sprint while moving; stamina drains while sprinting and regenerates when released
+- **Space**: Jump
 - **Ctrl while moving**: Forward roll with a speed boost
+- **Ctrl while standing still**: Crouch
 - **E**: Interact with the contract board or a PvP pad
-- **Esc**: Release mouse capture
+- **Esc**: Open settings; press Esc again to close them
 
 ## Features
 
