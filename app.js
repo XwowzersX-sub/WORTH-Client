@@ -333,6 +333,7 @@ function updatePlayer(dt){
   if(!player)return;
   const wasGrounded=onGround;
   const direction=moveDirection();
+  if(rolling)direction.copy(rollDir);
   const moving=direction.lengthSq()>.01;
   if(rolling){
     rollTime=Math.max(0,rollTime-dt);
