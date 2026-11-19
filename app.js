@@ -845,6 +845,11 @@ function handleServerMessage(msg){
     $('vote-status').textContent='Selected arena: '+msg.map+'. Loading the match…';
     return;
   }
+  if(msg.type==='matchCancelled'){
+    state.queued=false;state.roomId=null;closeModal('map-vote-modal');
+    if(state.socket){try{state.socket.close();}catch{}state.socket=null;}
+    toast(msg.message||'MATCH CANCELLED · REQUEUE WHEN READY');return;
+  }
   if(msg.type==='matchFound'){
     state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.serverTimeScale=1;state.stamina=100;state.queued=false;state.paused=false;
     closeModal('match-modal');closeModal('pad-modal');closeModal('map-vote-modal');
