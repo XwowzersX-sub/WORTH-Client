@@ -482,7 +482,7 @@ function finishLocalMatch(){
   state.completedMatches++;state.upgradePoints+=3;
   grantContractProgress('matches',1);persistProgress();
   $('result-title').textContent='NICE RUN.';
-  $('result-copy').textContent='Practice complete · +120 credits · +3 Addition points.';
+  $('result-copy').textContent='Practice complete · +120 Bitz · +3 Addition points.';
   $('result-banner').hidden=false;
 }
 function updateScoreHud(){
@@ -665,9 +665,10 @@ async function loadSession(){
 async function authenticate(kind){
   if(!supabase){toast('ACCOUNT SERVICE NOT CONFIGURED');return;}
   const email=$('auth-email').value.trim(),password=$('auth-password').value;
-  const requestedName=cleanNickname($('auth-username').value||'Rookie');
+  const rawName=$('auth-username').value.trim();
+  const requestedName=rawName.replace(/[^a-zA-Z0-9 _-]/g,'').trim().slice(0,16);
   if(!email||password.length<8){toast('ENTER EMAIL AND A PASSWORD OF AT LEAST 8 CHARACTERS');return;}
-  if(kind==='signup'&&requestedName.length<3){toast('CHOOSE A USERNAME OF AT LEAST 3 CHARACTERS');return;}
+  if(kind==='signup'&&(requestedName.length<3||requestedName.length>16)){toast('CHOOSE A USERNAME OF 3–16 VALID CHARACTERS');return;}
   const response=kind==='signup'
     ? await supabase.auth.signUp({email,password,options:{data:{nickname:requestedName}}})
     : await supabase.auth.signInWithPassword({email,password});
