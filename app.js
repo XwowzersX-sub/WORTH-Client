@@ -597,8 +597,9 @@ function bindUI(){
   renderContractBoard();renderMatchSetup();renderKeybinds();renderShop();updateAccountUI();
 }
 function setTouchKeys(dx,dy){
-  ['KeyW','KeyA','KeyS','KeyD'].forEach(k=>keys.delete(k));
-  if(dy<-.22)keys.add('KeyW');if(dy>.22)keys.add('KeyS');if(dx<-.22)keys.add('KeyA');if(dx>.22)keys.add('KeyD');
+  [state.keybinds.forward,state.keybinds.back,state.keybinds.left,state.keybinds.right].forEach(k=>keys.delete(k));
+  if(dy<-.22)keys.add(state.keybinds.forward);if(dy>.22)keys.add(state.keybinds.back);
+  if(dx<-.22)keys.add(state.keybinds.left);if(dx>.22)keys.add(state.keybinds.right);
 }
 function renderContractBoard(){
   $('contract-list').innerHTML=CONTRACTS.map(c=>{
@@ -772,8 +773,9 @@ async function queueMatch(){
     try{const {data}=await supabase?.auth.getSession()||{data:{session:null}};accessToken=data.session?.access_token||null;}catch{}
     if(ws.readyState!==WebSocket.OPEN)return;
     ws.send(JSON.stringify({type:'hello',token:accessToken,nickname:state.nickname}));
-    ws.send(JSON.stringify({type:'queue',map:state.map,mode:state.mode,loadout:state.loadout,upgrades:state.upgrades,additionPoints:state.upgradePoints}));
-    $('match-status').textContent='Waiting for another player…';
+    ws.send(JSON.stringify({type:'queue',matchFormat:state.matchFormat,mode:state.mode,loadout:state.loadout,upgrades:state.upgrades,additionPoints:state.upgradePoints}));
+    const format=FORMATS.find(x=>x.id===state.matchFormat)||FORMATS[0];
+    $('match-status').textContent='Waiting for '+format.size+' players · '+format.label+'…';
   });
   ws.addEventListener('message',event=>{
     let msg;try{msg=JSON.parse(event.data);}catch{return;}
@@ -793,11 +795,47 @@ function cancelQueue(){
   if(state.socket?.readyState===WebSocket.OPEN||state.socket?.readyState===WebSocket.CONNECTING)state.socket.close();
   state.socket=null;closeModal('match-modal');
 }
+function renderMapVote(counts={}){
+  const host=$('map-vote-list');if(!host)return;
+  const safeCounts=counts||{};
+  host.innerHTML=MAPS.map((m,i)=>'<button class="map-vote-choice '+(state.mapVote===m?'selected':'')+'" data-vote-map="'+m+'"><span class="map-thumb" style="filter:hue-rotate('+(i*45)+'deg)"></span>'+m+'<small>'+(Number(safeCounts[m])||0)+' VOTES</small></button>').join('');
+  host.querySelectorAll('[data-vote-map]').forEach(b=>b.addEventListener('click',()=>voteForMap(b.dataset.voteMap)));
+}
+function voteForMap(map){
+  if(!MAPS.includes(map)||state.socket?.readyState!==WebSocket.OPEN)return;
+  state.mapVote=map;
+  state.socket.send(JSON.stringify({type:'mapVote',map}));
+  renderMapVote(state.voteCounts||{});
+  $('vote-status').textContent='Your vote: '+map+'. You can change it until voting closes.';
+}
 function handleServerMessage(msg){
-  if(msg.type==='queued'){$('match-status').textContent='Waiting for another player · '+(msg.map||state.map)+' · '+(msg.mode||state.mode);return;}
+  if(msg.type==='queued'){
+    const f=FORMATS.find(x=>x.id===state.matchFormat)||FORMATS[0];
+    $('match-status').textContent='Queue ready · '+(msg.playersQueued||1)+' / '+(msg.required||f.size)+' players · '+f.label;
+    return;
+  }
+  if(msg.type==='voteStart'){
+    state.mapVote=null;state.voteCounts=msg.counts||{};
+    $('vote-subtitle').textContent=(msg.playerCount||0)+' players found · vote closes in '+(msg.seconds||12)+' seconds.';
+    $('vote-status').textContent='Choose one of the five arenas. The top vote wins.';
+    renderMapVote(state.voteCounts);closeModal('match-modal');closeModal('pad-modal');openModal('map-vote-modal');return;
+  }
+  if(msg.type==='voteUpdate'){
+    state.voteCounts=msg.counts||{};
+    renderMapVote(state.voteCounts);
+    if(state.mapVote)$('vote-status').textContent='Your vote: '+state.mapVote+'. Votes are updating live.';
+    return;
+  }
+  if(msg.type==='voteEnd'){
+    $('vote-status').textContent='Selected arena: '+msg.map+'. Loading the match…';
+    return;
+  }
   if(msg.type==='matchFound'){
-    state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.serverTimeScale=1;state.stamina=100;state.queued=false;closeModal('match-modal');closeModal('pad-modal');
-    $('zone-hud').hidden=false;state.screen='online';buildWorld('practice',msg.map||state.map);$('world-name').textContent=msg.map.toUpperCase();toast('MATCH FOUND · FIRST TO 5 ROUNDS');return;
+    state.roomId=msg.roomId;state.playerId=msg.playerId||state.playerId;state.local=false;state.serverTimeScale=1;state.stamina=100;state.queued=false;state.paused=false;
+    closeModal('match-modal');closeModal('pad-modal');closeModal('map-vote-modal');
+    $('zone-hud').hidden=false;state.screen='online';buildWorld('practice',msg.map||state.map);
+    $('world-name').textContent=(msg.map||state.map).toUpperCase();
+    toast('MATCH FOUND · '+(msg.format||state.matchFormat).toUpperCase()+' · FIRST TO 5');return;
   }
   if(msg.type==='snapshot'){
     state.serverTimeScale=Number(msg.timeScale)===0.38 ? 0.38 : 1;
@@ -813,10 +851,10 @@ function handleServerMessage(msg){
   if(msg.type==='matchEnd'){
     state.completedMatches++;grantContractProgress('matches',1);persistProgress();
     $('result-title').textContent=msg.winner==='self'?'YOU WON.':'GOOD MATCH.';
-    $('result-copy').textContent=msg.winner==='self'?'Match win · 350 credits awarded.':'Match complete · 100 credits awarded.';
+    $('result-copy').textContent=msg.winner==='self'?'Match win · 350 Bitz awarded.':'Match complete · 100 Bitz awarded.';
     $('result-banner').hidden=false;state.roomId=null;state.serverTimeScale=1;$('zone-hud').hidden=true;state.screen='lobby';buildWorld('lobby',state.map);
   }
-  if(msg.type==='creditsAwarded'){state.credits=Number(msg.totalCredits)||state.credits;$('credits').textContent=state.credits;persistProgress();}
+  if(msg.type==='creditsAwarded'){state.credits=Number(msg.totalCredits)||state.credits;$('credits').textContent=state.credits;renderShop();persistProgress();}
   if(msg.type==='notice')toast(msg.message||'MATCH UPDATE');
   if(msg.type==='backToLobby'){state.screen='lobby';state.serverTimeScale=1;buildWorld('lobby',state.map);$('zone-hud').hidden=true;}
   if(msg.type==='error')toast(msg.message||'SERVER ERROR');
@@ -842,7 +880,13 @@ function sendProfileUpdate(){
 }
 function sendInput(){
   if(state.socket?.readyState!==WebSocket.OPEN||!state.roomId)return;
-  state.socket.send(JSON.stringify({type:'input',keys:[...keys].filter(k=>['KeyW','KeyA','KeyS','KeyD','Space'].includes(k)),yaw,roll:rolling,rollX:rollDir.x,rollZ:rollDir.z,crouch:crouching,sprint:sprinting,aim:aiming}));
+  const normalized=[];
+  if(keys.has(state.keybinds.forward))normalized.push('KeyW');
+  if(keys.has(state.keybinds.back))normalized.push('KeyS');
+  if(keys.has(state.keybinds.left))normalized.push('KeyA');
+  if(keys.has(state.keybinds.right))normalized.push('KeyD');
+  if(keys.has(state.keybinds.jump))normalized.push('Space');
+  state.socket.send(JSON.stringify({type:'input',keys:normalized,yaw,roll:rolling,rollX:rollDir.x,rollZ:rollDir.z,crouch:crouching,sprint:sprinting,aim:aiming}));
 }
 let sendAccumulator=0;
 function animateRemotePlayers(realDt,simDt){
