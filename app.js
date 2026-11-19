@@ -7,6 +7,29 @@ const supabase = CONFIG.supabaseUrl && CONFIG.supabasePublishableKey
   : null;
 
 const MAPS = ['Neon Foundry','Skybridge','Dustpoint','Glacier Run','Orbit Yard'];
+const FORMATS = [
+  {id:'1v1',label:'1V1',size:2,teams:2},
+  {id:'2v2',label:'2V2',size:4,teams:2},
+  {id:'3v3',label:'3V3',size:6,teams:2},
+  {id:'5v5',label:'5V5',size:10,teams:2},
+  {id:'1v1v1',label:'1V1V1',size:3,teams:3,ffa:true}
+];
+const SHOP_ITEMS = [
+  {id:'Pixel Spark',cost:250,color:'#9b82ff',desc:'A violet pixel trail for your player ring.'},
+  {id:'Comet Wake',cost:400,color:'#ffce83',desc:'A warm comet-gold trail for your player ring.'}
+];
+const DEFAULT_KEYBINDS = {
+  forward:'KeyW',back:'KeyS',left:'KeyA',right:'KeyD',
+  jump:'Space',sprint:'ShiftLeft',roll:'ControlLeft',interact:'KeyE'
+};
+function loadKeybinds(){
+  try{return {...DEFAULT_KEYBINDS,...JSON.parse(localStorage.getItem('worth-keybinds')||'{}')};}
+  catch{return {...DEFAULT_KEYBINDS};}
+}
+function cleanNickname(value){
+  const clean=String(value||'').replace(/[^a-zA-Z0-9 _-]/g,'').trim().slice(0,16);
+  return clean.length>=3?clean:'Rookie';
+}
 const GEAR = {
   movement: ['Sprint Soles','Air Wing','Gravity Boots'],
   utility: ['Bounce Core','Time Bubble','Signal Beacon'],
@@ -22,7 +45,7 @@ const $ = id => document.getElementById(id);
 const bootStartedAt=Date.now();
 function setLoadingProgress(percent,label){const f=$('loading-fill'),s=$('loading-status');if(f)f.style.width=Math.max(0,Math.min(100,percent))+'%';if(s&&label)s.textContent=label;}
 const state = {
-  mode:'loadout', map:MAPS[0], screen:'welcome', credits:0, nickname:'Rookie',
+  mode:'loadout', map:MAPS[0], matchFormat:'1v1', screen:'welcome', credits:0, nickname:'Rookie', inventory:['Aurora Trail'], keybinds:loadKeybinds(), paused:false, mapVote:null,
   session:null, user:null, loadout:{movement:GEAR.movement[0],utility:GEAR.utility[0],support:GEAR.support[0],style:GEAR.style[0]},
   upgrades:{moveSpeed:0,jump:0,stamina:0,recharge:0,zoneControl:0}, upgradePoints:0,
   contracts:Object.fromEntries(CONTRACTS.map(c=>[c.id,{progress:0,claimed:false}])),
@@ -240,13 +263,20 @@ function buildWorld(kind='lobby',mapName=MAPS[0]){
     const board=new THREE.Mesh(new THREE.BoxGeometry(7.3,2.4,.3),new THREE.MeshBasicMaterial({color:0x50d9e9,transparent:true,opacity:.035}));
     board.position.set(0,1.2,-7.55);worldGroup.add(board);
     interactables.push({type:'board',position:new THREE.Vector3(0,0,-5.7)});
-    const pads=[{x:-9,z:5,name:'PAD 01',map:MAPS[0]},{x:-3,z:7,name:'PAD 02',map:MAPS[1]},{x:3,z:7,name:'PAD 03',map:MAPS[2]},{x:9,z:5,name:'PAD 04',map:MAPS[3]},{x:0,z:12,name:'PAD 05',map:MAPS[4]}];
+    const pads=[
+      {x:-10,z:5,label:'1V1',type:'queue',format:'1v1'},
+      {x:-10,z:-2,label:'2V2',type:'queue',format:'2v2'},
+      {x:-3,z:-12,label:'3V3',type:'queue',format:'3v3'},
+      {x:8,z:-10,label:'5V5',type:'queue',format:'5v5'},
+      {x:10,z:3,label:'1V1V1',type:'queue',format:'1v1v1'},
+      {x:0,z:12,label:'PRACTICE',type:'practice'}
+    ];
     pads.forEach((p,i)=>{
       const base=new THREE.Mesh(new THREE.CylinderGeometry(2.05,2.3,.4,40),mat(i%2?0x27395e:0x25365a,.35,.4));base.position.set(p.x,.02,p.z);base.castShadow=true;worldGroup.add(base);
-      const glow=new THREE.Mesh(new THREE.TorusGeometry(1.68,.07,10,48),new THREE.MeshStandardMaterial({color:0x62e6ef,emissive:0x3cc8e5,emissiveIntensity:1.25,metalness:.3,roughness:.25}));glow.rotation.x=Math.PI/2;glow.position.set(p.x,.26,p.z);worldGroup.add(glow);
-      const center=new THREE.Mesh(new THREE.CircleGeometry(1.54,40),new THREE.MeshBasicMaterial({color:0x4b73cb,transparent:true,opacity:.22,side:THREE.DoubleSide}));center.rotation.x=-Math.PI/2;center.position.set(p.x,.245,p.z);worldGroup.add(center);
-      addLabel(p.name,p.x,1.2,p.z,'#c4fbff',.52);
-      interactables.push({type:'pad',map:p.map,position:new THREE.Vector3(p.x,0,p.z)});
+      const glow=new THREE.Mesh(new THREE.TorusGeometry(1.68,.07,10,48),new THREE.MeshStandardMaterial({color:p.type==='practice'?0xffd782:0x62e6ef,emissive:p.type==='practice'?0xd08a34:0x3cc8e5,emissiveIntensity:1.25,metalness:.3,roughness:.25}));glow.rotation.x=Math.PI/2;glow.position.set(p.x,.26,p.z);worldGroup.add(glow);
+      const center=new THREE.Mesh(new THREE.CircleGeometry(1.54,40),new THREE.MeshBasicMaterial({color:p.type==='practice'?0x9d7136:0x4b73cb,transparent:true,opacity:.22,side:THREE.DoubleSide}));center.rotation.x=-Math.PI/2;center.position.set(p.x,.245,p.z);worldGroup.add(center);
+      addLabel(p.label,p.x,1.2,p.z,p.type==='practice'?'#ffdfa0':'#c4fbff',.55);
+      interactables.push({type:p.type,label:p.label,format:p.format,position:new THREE.Vector3(p.x,0,p.z)});
     });
     addLabel('WORTH ATRIUM',0,2.1,0,'#ffffff',.7);
   }else{
@@ -294,43 +324,54 @@ function buildWorld(kind='lobby',mapName=MAPS[0]){
 }
 function onResize(){if(!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);}
 function onKeyDown(e){
+  if(rebindAction){
+    e.preventDefault();e.stopPropagation();
+    if(e.code==='Escape'){rebindAction=null;renderKeybinds();return;}
+    if(['Backspace','Tab','Enter'].includes(e.code)){toast('CHOOSE A DIFFERENT KEY');return;}
+    state.keybinds[rebindAction]=e.code;rebindAction=null;keys.clear();
+    try{localStorage.setItem('worth-keybinds',JSON.stringify(state.keybinds));}catch{}
+    renderKeybinds();toast('KEYBIND SAVED');return;
+  }
   if(e.code==='Escape'){
     e.preventDefault();e.stopPropagation();keys.clear();sprinting=false;mobileSprintHeld=false;setAiming(false);
+    if(!$('map-vote-modal').hidden){toast('MAP VOTE IN PROGRESS');return;}
     const openModals=[...document.querySelectorAll('.modal-wrap:not([hidden])')];
     if(openModals.length){
       const activeModal=openModals[openModals.length-1];
       if(activeModal.id==='match-modal')cancelQueue();else closeModal(activeModal.id);
-    }else openModal('settings-modal');
+    }else if(!$('welcome-screen').hidden){return;}
+    else if(state.paused)closePauseMenu();
+    else openPauseMenu();
     return;
   }
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
   if(e.repeat)return;
   keys.add(e.code);
-  if(e.code==='KeyE')interact();
+  if(e.code===state.keybinds.interact)interact();
   if(e.code==='KeyU'&&state.screen==='online'){openModal('pad-modal');renderMatchSetup();}
-  if(e.code==='Space'){
+  if(e.code===state.keybinds.jump){
     if(rolling){rolling=false;rollTime=0;toast('ROLL CANCELLED');}
     else if(onGround){velocity.y=8.1+state.upgrades.jump*.35;onGround=false;}
   }
-  if(e.code==='ControlLeft'||e.code==='ControlRight'){
+  if(e.code===state.keybinds.roll){
     const moving=keys.has('KeyW')||keys.has('KeyA')||keys.has('KeyS')||keys.has('KeyD');
     if(moving&&!rolling){rolling=true;crouching=false;rollTime=.78;rollDir.copy(moveDirection());if(rollDir.lengthSq()<.01)rollDir.set(0,0,-1);toast('ROLL BOOST');}
     else if(!moving)crouching=true;
   }
 }
-function onKeyUp(e){keys.delete(e.code);if(e.code==='ControlLeft'||e.code==='ControlRight')crouching=false;}
+function onKeyUp(e){keys.delete(e.code);if(e.code===state.keybinds.roll)crouching=false;}
 function moveDirection(){
   const forward=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
   const right=new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
   const v=new THREE.Vector3();
-  if(keys.has('KeyW'))v.add(forward);
-  if(keys.has('KeyS'))v.sub(forward);
-  if(keys.has('KeyD'))v.add(right);
-  if(keys.has('KeyA'))v.sub(right);
+  if(keys.has(state.keybinds.forward))v.add(forward);
+  if(keys.has(state.keybinds.back))v.sub(forward);
+  if(keys.has(state.keybinds.right))v.add(right);
+  if(keys.has(state.keybinds.left))v.sub(right);
   return v.lengthSq()?v.normalize():v;
 }
 function updatePlayer(dt){
-  if(!player)return;
+  if(!player||state.paused)return;
   const wasGrounded=onGround;
   const direction=moveDirection();
   if(rolling)direction.copy(rollDir);
@@ -341,7 +382,7 @@ function updatePlayer(dt){
     player.userData.rollPivot.rotation.x=-THREE.MathUtils.clamp(progress,0,1)*Math.PI*2;
     if(rollTime<=0){rolling=false;player.userData.rollPivot.rotation.x=0;}
   }else player.userData.rollPivot.rotation.x=0;
-  const wantsSprint=keys.has('ShiftLeft')||keys.has('ShiftRight')||mobileSprintHeld;
+  const wantsSprint=keys.has(state.keybinds.sprint)||mobileSprintHeld;
   sprinting=!!(wantsSprint&&moving&&!rolling&&!crouching&&state.stamina>0);
   state.stamina=THREE.MathUtils.clamp(state.stamina+(sprinting?-32:22)*dt,0,100);
   let speed=6.1+state.upgrades.moveSpeed*.35;
@@ -397,7 +438,7 @@ function updateCamera(dt){
   if(Math.abs(camera.fov-nextFov)>.01){camera.fov=nextFov;camera.updateProjectionMatrix();}
 }
 function canUseGameControls(){
-  return $('welcome-screen').hidden&&!document.querySelector('.modal-wrap:not([hidden])')&&$('result-banner').hidden;
+  return $('welcome-screen').hidden&&$('pause-menu').hidden&&!state.paused&&!document.querySelector('.modal-wrap:not([hidden])')&&$('result-banner').hidden;
 }
 function setAiming(value){
   const next=!!value;
@@ -412,14 +453,15 @@ function updateInteractable(){
   nearest=null;let best=4.2;
   for(const item of interactables){const d=player.position.distanceTo(item.position);if(d<best){best=d;nearest=item;}}
   const prompt=$('interact-prompt');
-  if(nearest){prompt.hidden=false;$('interact-text').textContent=nearest.type==='board'?'OPEN CONTRACT BOARD':'ENTER '+nearest.map.toUpperCase()+' PAD';}
+  if(nearest){prompt.hidden=false;$('interact-text').textContent=nearest.type==='board'?'OPEN CONTRACT BOARD':nearest.type==='practice'?'ENTER PRACTICE ARENA':'JOIN '+nearest.label+' QUEUE';}
   else prompt.hidden=true;
 }
 function interact(){
   if(state.screen==='welcome')return;
   if(nearest){
     if(nearest.type==='board')openModal('board-modal');
-    if(nearest.type==='pad'){state.map=nearest.map;openModal('pad-modal');renderMatchSetup();}
+    if(nearest.type==='practice')localPractice();
+    if(nearest.type==='queue'){state.matchFormat=nearest.format||'1v1';openModal('pad-modal');renderMatchSetup();}
     return;
   }
   if(currentWorld==='practice'&&player.position.distanceTo(new THREE.Vector3(0,0,0))<3)scoreLocalZone();
@@ -449,17 +491,61 @@ function updateScoreHud(){
   $('zone-note').textContent='Round wins '+state.roundWinsA+' — '+state.roundWinsB+' · first to five';
 }
 function localPractice(){
-  state.local=true;state.screen='practice';state.scoreA=0;state.scoreB=0;state.roundWinsA=0;state.roundWinsB=0;state.scoreTimer=0;state.nextCheckpoint=0;localZoneTimer=0;
+  state.paused=false;$('pause-menu').hidden=true;state.local=true;state.screen='practice';state.scoreA=0;state.scoreB=0;state.roundWinsA=0;state.roundWinsB=0;state.scoreTimer=0;state.nextCheckpoint=0;localZoneTimer=0;
   $('welcome-screen').hidden=true;$('pad-modal').hidden=true;$('match-modal').hidden=true;$('zone-hud').hidden=false;
   buildWorld('practice',state.map);lockMouse();
   toast('PRACTICE STARTED · SHIFT TO SPRINT · CTRL TO ROLL');
 }
 function enterLobby(){
-  state.screen='lobby';$('welcome-screen').hidden=true;$('world-hud').hidden=false;
+  state.paused=false;$('pause-menu').hidden=true;state.screen='lobby';$('welcome-screen').hidden=true;$('world-hud').hidden=false;
   buildWorld('lobby',state.map);lockMouse();toast('WELCOME TO THE ATRIUM');
 }
 function openModal(id){keys.clear();crouching=false;sprinting=false;mobileSprintHeld=false;$(id).hidden=false;setAiming(false);document.exitPointerLock?.();}
 function closeModal(id){$(id).hidden=true;}
+function openPauseMenu(){
+  state.paused=true;keys.clear();crouching=false;sprinting=false;mobileSprintHeld=false;setAiming(false);
+  $('pause-menu').hidden=false;document.exitPointerLock?.();
+  if(state.socket?.readyState===WebSocket.OPEN&&state.roomId)sendInput();
+}
+function closePauseMenu(){
+  $('pause-menu').hidden=true;state.paused=false;keys.clear();
+  if(state.screen!=='welcome')lockMouse();
+}
+function goMainMenu(){
+  state.paused=false;$('pause-menu').hidden=true;$('welcome-screen').hidden=false;
+  $('result-banner').hidden=true;$('zone-hud').hidden=true;$('stamina-hud').hidden=true;
+  state.local=false;state.screen='welcome';setAiming(false);document.exitPointerLock?.();
+  if(state.socket){try{state.socket.close();}catch{}state.socket=null;}
+  state.roomId=null;buildWorld('lobby',state.map);
+}
+let rebindAction=null;
+const KEY_LABELS={forward:'Move forward',back:'Move backward',left:'Move left',right:'Move right',jump:'Jump',sprint:'Sprint',roll:'Roll / crouch',interact:'Interact'};
+function prettyKey(code){return String(code||'').replace('Key','').replace('Digit','').replace('ShiftLeft','Left Shift').replace('ShiftRight','Right Shift').replace('ControlLeft','Left Ctrl').replace('ControlRight','Right Ctrl');}
+function renderKeybinds(){
+  const host=$('keybind-list');if(!host)return;
+  host.innerHTML=Object.entries(KEY_LABELS).map(([id,label])=>'<div class="keybind-row"><span>'+label+'</span><button data-bind="'+id+'" class="'+(rebindAction===id?'waiting':'')+'">'+(rebindAction===id?'PRESS A KEY':prettyKey(state.keybinds[id]))+'</button></div>').join('');
+  host.querySelectorAll('[data-bind]').forEach(b=>b.addEventListener('click',()=>{rebindAction=b.dataset.bind;renderKeybinds();$('keybind-status').textContent='Press the new key for '+KEY_LABELS[rebindAction]+'.';}));
+}
+function openUsernameModal(){
+  $('username-input').value=state.nickname;$('username-modal').hidden=false;document.exitPointerLock?.();
+}
+async function saveUsername(){
+  const raw=$('username-input').value.trim(),name=raw.replace(/[^a-zA-Z0-9 _-]/g,'').trim().slice(0,16);
+  if(name.length<3){toast('USERNAME MUST BE 3–16 CHARACTERS');return;}
+  if(state.user&&supabase){
+    const {error}=await supabase.from('profiles').upsert({id:state.user.id,username:name,updated_at:new Date().toISOString()},{onConflict:'id'});
+    if(error){toast(error.code==='23505'?'THAT USERNAME IS ALREADY TAKEN':error.message);return;}
+    const meta=await supabase.auth.updateUser({data:{nickname:name}});
+    if(meta.error)console.warn('Username metadata update:',meta.error.message);
+  }else{
+    try{localStorage.setItem('worth-guest-name',name);}catch{}
+  }
+  state.nickname=name;
+  if(state.user)persistProgress();
+  if(state.socket?.readyState===WebSocket.OPEN)state.socket.send(JSON.stringify({type:'profileUpdate',nickname:name}));
+  updateAccountUI();closeModal('username-modal');toast('USERNAME UPDATED');
+}
+
 function bindUI(){
   $('enter-lobby').addEventListener('click',enterLobby);
   $('quick-practice').addEventListener('click',()=>{state.map=MAPS[0];localPractice();});
