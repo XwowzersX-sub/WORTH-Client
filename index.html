@@ -30,7 +30,8 @@
     <a class="brand" href="#" aria-label="WORTH home"><span class="brand-mark">W</span><span>WORTH</span></a>
     <div class="top-center"><span class="live-dot"></span><span id="connection-label">LOCAL PRACTICE READY</span></div>
     <div class="top-actions">
-      <span class="credits"><b>✦</b> <strong id="credits">0</strong></span>
+      <span class="credits"><b>✦</b> <strong id="credits">0</strong> <small>BITZ</small></span>
+      <button class="small-btn" id="shop-open">SHOP</button>
       <button class="small-btn" id="account-open">ACCOUNT</button>
       <button class="small-btn" id="settings-open">SETTINGS</button>
     </div>
@@ -45,7 +46,7 @@
     <div class="world-sub" id="world-sub">Explore the hub · Find a challenge</div>
   </div>
   <div class="stamina-hud" id="stamina-hud" hidden>
-    <div class="stamina-head"><span>STAMINA</span><b><span id="stamina-value">100</span>%</b></div>
+    <div class="stamina-head"><span>ENERGY</span><b><span id="stamina-value">100</span>%</b></div>
     <div class="stamina-track"><span id="stamina-fill"></span></div>
   </div>
   <div class="zone-hud" id="zone-hud" hidden>
@@ -56,7 +57,7 @@
   </div>
   <div class="interact-prompt" id="interact-prompt" hidden><kbd>E</kbd><span id="interact-text">INTERACT</span></div>
   <div class="bottom-hints" id="bottom-hints">
-    <span><kbd>W A S D</kbd> MOVE</span><span><kbd>SHIFT</kbd> SPRINT</span><span><kbd>SPACE</kbd> JUMP</span><span><kbd>CTRL</kbd> ROLL</span><span><kbd>RMB</kbd> HEAD CAM FOCUS</span><span><kbd>E</kbd> INTERACT</span><span><kbd>ESC</kbd> SETTINGS</span>
+    <span><kbd>W A S D</kbd> MOVE</span><span><kbd>SHIFT</kbd> SPRINT</span><span><kbd>SPACE</kbd> JUMP</span><span><kbd>CTRL</kbd> ROLL</span><span><kbd>RMB</kbd> HEAD CAM FOCUS</span><span><kbd>E</kbd> INTERACT</span><span><kbd>ESC</kbd> MENU</span>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -65,14 +66,20 @@
       <div class="eyebrow"><span class="live-dot"></span> SEASON 01 · OPEN PLAY</div>
       <h1>WORTH<span>.</span></h1>
       <p class="tagline">Every move counts.</p>
-      <p class="welcome-copy">A fast, 3D arena sport. Learn the movement, take on challenges, and compete for the center.</p>
-      <button class="primary-btn" id="enter-lobby">ENTER THE ATRIUM <span>↗</span></button>
-      <button class="quiet-btn" id="quick-practice">JUMP INTO PRACTICE</button>
+      <p class="welcome-copy">A fast, 3D arena sport. Master movement, capture the center, and race through five neon arenas.</p>
+      <button class="primary-btn" id="enter-lobby">PLAY · ENTER THE ATRIUM <span>↗</span></button>
+      <button class="quiet-btn" id="quick-practice">PRACTICE ARENA</button>
+      <div class="menu-grid">
+        <button class="menu-tile" id="menu-account">ACCOUNT <small>Log in / create account</small></button>
+        <button class="menu-tile" id="menu-username">USERNAME <small>Change display name</small></button>
+        <button class="menu-tile" id="menu-keybinds">KEYBINDS <small>Customize controls</small></button>
+        <button class="menu-tile" id="menu-shop">BITZ SHOP <small>Unlock cosmetic trails</small></button>
+      </div>
       <div class="welcome-foot"><span>THIRD-PERSON ARENA</span><span>BUILD 0.1.0</span></div>
     </div>
     <div class="welcome-side">
       <div class="side-orbit"></div>
-      <div class="side-copy"><span>01 / 05</span><b>FIND YOUR<br>OWN ROUTE.</b><small>Five arenas. Two rule sets. One goal: outplay the field.</small></div>
+      <div class="side-copy"><span>01 / 05</span><b>MOVE SMART.<br>OWN THE CENTER.</b><small>Queue with friends, vote on a map, and win rounds through movement and control.</small></div>
     </div>
   </section>
 
@@ -82,6 +89,7 @@
       <div class="eyebrow">PLAYER PROFILE</div><h2>YOUR ACCOUNT</h2>
       <p class="muted" id="account-status">Play locally as a guest or sign in to sync your progress.</p>
       <div class="field"><label>EMAIL</label><input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+      <div class="field" id="auth-username-wrap"><label>NEW ACCOUNT USERNAME</label><input id="auth-username" type="text" maxlength="16" autocomplete="nickname" placeholder="3–16 characters"></div>
       <div class="field"><label>PASSWORD</label><input id="auth-password" type="password" autocomplete="current-password" placeholder="At least 8 characters"></div>
       <div class="modal-actions"><button class="primary-btn" id="sign-in">SIGN IN</button><button class="outline-btn" id="sign-up">CREATE ACCOUNT</button></div>
       <button class="quiet-btn" id="sign-out" hidden>SIGN OUT</button>
@@ -96,7 +104,47 @@
       <div class="setting-row"><div><b>Camera distance</b><small>Third-person view</small></div><input id="camera-distance" type="range" min="4" max="10" step="0.5" value="5.2"></div>
       <div class="setting-row"><div><b>Show control hints</b><small>On-screen movement guide</small></div><input id="hints-toggle" type="checkbox" checked></div>
       <div class="setting-row"><div><b>Reduced motion</b><small>Less camera shake and visual movement</small></div><input id="reduced-motion" type="checkbox"></div>
-      <div class="settings-controls"><b>QUICK CONTROLS</b><p>WASD move · Shift sprint · Space jump · Ctrl roll · Right mouse focus camera · E interact · Esc close settings</p></div>
+      <div class="settings-controls"><b>QUICK CONTROLS</b><p>WASD move · Shift sprint · Space jump · Ctrl roll · Right mouse head-cam focus · E interact · Esc open menu</p><button class="outline-btn" id="settings-keybinds">CUSTOMIZE KEYBINDS</button></div>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="username-modal" hidden>
+    <div class="modal">
+      <button class="close-btn" data-close="username-modal">×</button>
+      <div class="eyebrow">PLAYER ID</div><h2>CHANGE USERNAME</h2>
+      <p class="muted">Your username is shown to other players. Use 3–16 letters, numbers, spaces, underscores, or hyphens.</p>
+      <div class="field"><label>NEW USERNAME</label><input id="username-input" type="text" maxlength="16" autocomplete="nickname"></div>
+      <button class="primary-btn" id="username-save">SAVE USERNAME</button>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="keybinds-modal" hidden>
+    <div class="modal">
+      <button class="close-btn" data-close="keybinds-modal">×</button>
+      <div class="eyebrow">CONTROLS</div><h2>KEYBINDS</h2>
+      <p class="muted">Choose a control, then press the key you want to assign. Changes are saved on this device.</p>
+      <div id="keybind-list" class="keybind-list"></div>
+      <button class="outline-btn" id="keybind-reset">RESET DEFAULTS</button>
+      <p class="keybind-status" id="keybind-status">Right mouse button controls head-cam focus.</p>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="shop-modal" hidden>
+    <div class="modal wide-modal">
+      <button class="close-btn" data-close="shop-modal">×</button>
+      <div class="eyebrow">COSMETICS ONLY</div><h2>BITZ SHOP</h2>
+      <p class="muted">Spend Bitz on visual trail styles. Purchases never affect movement or match scoring.</p>
+      <div class="shop-balance">YOUR BALANCE <strong>✦ <span id="shop-balance">0</span> BITZ</strong></div>
+      <div class="shop-grid" id="shop-items"></div>
+    </div>
+  </section>
+
+  <section class="modal-wrap" id="map-vote-modal" hidden>
+    <div class="modal wide-modal">
+      <div class="eyebrow">MATCH LOBBY · MAP VOTE</div><h2>CHOOSE THE ARENA</h2>
+      <p class="muted" id="vote-subtitle">Players are choosing from five arenas.</p>
+      <div class="map-vote-grid" id="map-vote-list"></div>
+      <p class="keybind-status" id="vote-status">Cast one vote. The most-voted arena wins.</p>
     </div>
   </section>
 
@@ -112,16 +160,16 @@
   <section class="modal-wrap" id="pad-modal" hidden>
     <div class="modal wide-modal">
       <button class="close-btn" data-close="pad-modal">×</button>
-      <div class="eyebrow">PVP PAD · MATCH SETUP</div><h2>CHOOSE YOUR ARENA</h2>
+      <div class="eyebrow">MATCH PAD · MATCH SETUP</div><h2 id="pad-format-title">1V1 MATCH</h2><p class="muted" id="match-size-note">Map voting begins when enough players queue.</p>
       <div class="mode-switch">
         <button class="mode-btn active" data-mode="loadout">LOADOUT <small>Choose your gear</small></button>
         <button class="mode-btn" data-mode="addition">ADDITION <small>Build your stats</small></button>
       </div>
       <div class="setup-grid">
-        <div><label class="field-label">ARENA</label><div class="map-list" id="map-list"></div></div>
+        <div><label class="field-label">MAP VOTE POOL</label><div class="map-list" id="map-list"></div><p class="muted">All queued players vote after the lobby fills.</p></div>
         <div><label class="field-label">YOUR SETUP</label><div id="loadout-panel"></div></div>
       </div>
-      <div class="match-footer"><span>FIRST TO 5 ROUND WINS</span><button class="primary-btn" id="find-match">FIND MATCH <span>↗</span></button></div>
+      <div class="match-footer"><span id="match-format-footer">FIRST TO 5 ROUND WINS</span><button class="primary-btn" id="find-match">FIND MATCH <span>↗</span></button></div>
     </div>
   </section>
 
@@ -131,6 +179,22 @@
       <div class="queue-ring" id="queue-ring"></div><p class="muted" id="match-status">Connecting to the WORTH server…</p>
       <button class="outline-btn" id="cancel-queue">CANCEL</button>
       <button class="quiet-btn" id="practice-instead">PLAY PRACTICE INSTEAD</button>
+    </div>
+  </section>
+
+  <section class="pause-menu" id="pause-menu" hidden>
+    <div class="pause-card">
+      <div class="eyebrow">PAUSED · WORTH ARENA</div><h2>MENU</h2>
+      <button class="primary-btn" id="resume-game">RESUME GAME</button>
+      <button class="pause-action" id="pause-main-menu">RETURN TO MAIN MENU</button>
+      <div class="pause-grid">
+        <button class="pause-action" id="pause-account">ACCOUNT</button>
+        <button class="pause-action" id="pause-username">CHANGE USERNAME</button>
+        <button class="pause-action" id="pause-keybinds">KEYBINDS</button>
+        <button class="pause-action" id="pause-shop">BITZ SHOP</button>
+        <button class="pause-action" id="pause-settings">SETTINGS</button>
+      </div>
+      <p>Press ESC to resume · Click the arena to recapture the mouse</p>
     </div>
   </section>
 
