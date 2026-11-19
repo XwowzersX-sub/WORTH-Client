@@ -575,7 +575,7 @@ function bindUI(){
   $('pad-modal').addEventListener('click',e=>{if(e.target===$('pad-modal'))closeModal('pad-modal');});
   $('sign-in').addEventListener('click',()=>authenticate('signin'));
   $('sign-up').addEventListener('click',()=>authenticate('signup'));
-  $('sign-out').addEventListener('click',async()=>{await supabase?.auth.signOut();state.session=null;state.user=null;state.nickname='Rookie';state.credits=0;state.inventory=['Aurora Trail'];$('credits').textContent='0';updateAccountUI();persistGuestName();toast('SIGNED OUT');});
+  $('sign-out').addEventListener('click',async()=>{await supabase?.auth.signOut();state.session=null;state.user=null;state.nickname='Rookie';state.credits=0;state.inventory=['Aurora Trail'];state.loadout.style='Aurora Trail';$('credits').textContent='0';updateAccountUI();persistGuestName();toast('SIGNED OUT');});
   $('find-match').addEventListener('click',queueMatch);
   $('cancel-queue').addEventListener('click',cancelQueue);
   $('practice-instead').addEventListener('click',localPractice);
@@ -593,7 +593,7 @@ function bindUI(){
   const stick=$('move-stick');let touchId=null;
   stick.addEventListener('touchstart',e=>{e.preventDefault();touchId=e.changedTouches[0].identifier;});
   stick.addEventListener('touchmove',e=>{const t=[...e.changedTouches].find(x=>x.identifier===touchId);if(!t)return;const r=stick.getBoundingClientRect();const dx=(t.clientX-r.left-r.width/2)/(r.width/2),dy=(t.clientY-r.top-r.height/2)/(r.height/2);setTouchKeys(dx,dy);});
-  stick.addEventListener('touchend',()=>{touchId=null;['KeyW','KeyA','KeyS','KeyD'].forEach(k=>keys.delete(k));});
+  stick.addEventListener('touchend',()=>{touchId=null;[state.keybinds.forward,state.keybinds.back,state.keybinds.left,state.keybinds.right].forEach(k=>keys.delete(k));});
   renderContractBoard();renderMatchSetup();renderKeybinds();renderShop();updateAccountUI();
 }
 function setTouchKeys(dx,dy){
@@ -649,7 +649,7 @@ function renderMatchSetup(){
   }
 }
 async function loadSession(){
-  try{state.nickname=localStorage.getItem('worth-guest-name')||'Rookie';}catch{}
+  loadGuestProgress();
   if(!supabase){$('account-status').textContent='Supabase is not configured. Guest practice is available.';updateAccountUI();return;}
   const {data}=await supabase.auth.getSession();
   state.session=data.session;state.user=data.session?.user||null;
@@ -658,6 +658,7 @@ async function loadSession(){
   supabase.auth.onAuthStateChange(async(_event,session)=>{
     state.session=session;state.user=session?.user||null;
     if(state.user)await loadProgress();
+    else loadGuestProgress();
     updateAccountUI();
   });
 }
@@ -712,12 +713,26 @@ async function loadProgress(){
   }else {state.inventory=['Aurora Trail'];await persistProgress();}
 }
 let saveChain=Promise.resolve();
+function loadGuestProgress(){
+  try{
+    const saved=JSON.parse(localStorage.getItem('worth-guest-progress')||'{}');
+    if(Number.isFinite(saved.credits))state.credits=Math.max(0,saved.credits);
+    if(Array.isArray(saved.inventory))state.inventory=saved.inventory.includes('Aurora Trail')?saved.inventory:['Aurora Trail',...saved.inventory];
+    if(saved.loadout&&typeof saved.loadout==='object')state.loadout={...state.loadout,...saved.loadout};
+    if(saved.nickname)state.nickname=cleanNickname(saved.nickname);
+    $('credits').textContent=state.credits;
+    renderShop();renderMatchSetup();
+  }catch{}
+}
 function persistProgress(){
-  if(!supabase||!state.user)return;
+  if(!supabase||!state.user){
+    try{localStorage.setItem('worth-guest-progress',JSON.stringify({nickname:state.nickname,credits:state.credits,inventory:state.inventory,loadout:state.loadout}));}catch{}
+    return;
+  }
   const payload={user_id:state.user.id,nickname:state.nickname,credits:state.credits,round_wins:state.roundWinsA,addition_points:state.upgradePoints,upgrades:state.upgrades,loadout:state.loadout,contracts:state.contracts,inventory:state.inventory,updated_at:new Date().toISOString()};
   saveChain=saveChain.then(()=>supabase.from('worth_player_data').upsert(payload,{onConflict:'user_id'})).then(({error})=>{if(error)console.warn('Progress save:',error.message);}).catch(console.error);
 }
-function persistGuestName(){try{localStorage.setItem('worth-guest-name',state.nickname);}catch{}}
+function persistGuestName(){try{localStorage.setItem('worth-guest-name',state.nickname);}catch{}persistProgress();}
 function renderShop(){
   const host=$('shop-items');if(!host)return;
   $('shop-balance').textContent=state.credits;
