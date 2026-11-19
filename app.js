@@ -548,6 +548,25 @@ async function saveUsername(){
 
 function bindUI(){
   $('enter-lobby').addEventListener('click',enterLobby);
+  $('menu-account').addEventListener('click',()=>openModal('account-modal'));
+  $('menu-username').addEventListener('click',openUsernameModal);
+  $('menu-keybinds').addEventListener('click',()=>{renderKeybinds();openModal('keybinds-modal');});
+  $('menu-shop').addEventListener('click',()=>{renderShop();openModal('shop-modal');});
+  $('shop-open').addEventListener('click',()=>{renderShop();openModal('shop-modal');});
+  $('settings-keybinds').addEventListener('click',()=>{renderKeybinds();openModal('keybinds-modal');});
+  $('pause-account').addEventListener('click',()=>openModal('account-modal'));
+  $('pause-username').addEventListener('click',openUsernameModal);
+  $('pause-keybinds').addEventListener('click',()=>{renderKeybinds();openModal('keybinds-modal');});
+  $('pause-shop').addEventListener('click',()=>{renderShop();openModal('shop-modal');});
+  $('pause-settings').addEventListener('click',()=>openModal('settings-modal'));
+  $('resume-game').addEventListener('click',closePauseMenu);
+  $('pause-main-menu').addEventListener('click',goMainMenu);
+  $('username-save').addEventListener('click',saveUsername);
+  $('keybind-reset').addEventListener('click',()=>{
+    state.keybinds={...DEFAULT_KEYBINDS};rebindAction=null;
+    try{localStorage.setItem('worth-keybinds',JSON.stringify(state.keybinds));}catch{}
+    renderKeybinds();toast('DEFAULT KEYBINDS RESTORED');
+  });
   $('quick-practice').addEventListener('click',()=>{state.map=MAPS[0];localPractice();});
   $('account-open').addEventListener('click',()=>openModal('account-modal'));
   $('settings-open').addEventListener('click',()=>openModal('settings-modal'));
@@ -556,7 +575,7 @@ function bindUI(){
   $('pad-modal').addEventListener('click',e=>{if(e.target===$('pad-modal'))closeModal('pad-modal');});
   $('sign-in').addEventListener('click',()=>authenticate('signin'));
   $('sign-up').addEventListener('click',()=>authenticate('signup'));
-  $('sign-out').addEventListener('click',async()=>{await supabase?.auth.signOut();state.session=null;state.user=null;state.nickname='Rookie';updateAccountUI();toast('SIGNED OUT');});
+  $('sign-out').addEventListener('click',async()=>{await supabase?.auth.signOut();state.session=null;state.user=null;state.nickname='Rookie';state.credits=0;state.inventory=['Aurora Trail'];$('credits').textContent='0';updateAccountUI();persistGuestName();toast('SIGNED OUT');});
   $('find-match').addEventListener('click',queueMatch);
   $('cancel-queue').addEventListener('click',cancelQueue);
   $('practice-instead').addEventListener('click',localPractice);
@@ -575,7 +594,7 @@ function bindUI(){
   stick.addEventListener('touchstart',e=>{e.preventDefault();touchId=e.changedTouches[0].identifier;});
   stick.addEventListener('touchmove',e=>{const t=[...e.changedTouches].find(x=>x.identifier===touchId);if(!t)return;const r=stick.getBoundingClientRect();const dx=(t.clientX-r.left-r.width/2)/(r.width/2),dy=(t.clientY-r.top-r.height/2)/(r.height/2);setTouchKeys(dx,dy);});
   stick.addEventListener('touchend',()=>{touchId=null;['KeyW','KeyA','KeyS','KeyD'].forEach(k=>keys.delete(k));});
-  renderContractBoard();renderMatchSetup();updateAccountUI();
+  renderContractBoard();renderMatchSetup();renderKeybinds();renderShop();updateAccountUI();
 }
 function setTouchKeys(dx,dy){
   ['KeyW','KeyA','KeyS','KeyD'].forEach(k=>keys.delete(k));
@@ -584,7 +603,7 @@ function setTouchKeys(dx,dy){
 function renderContractBoard(){
   $('contract-list').innerHTML=CONTRACTS.map(c=>{
     const progress=state.contracts[c.id].progress,claimed=state.contracts[c.id].claimed;
-    return '<article class="contract"><div class="contract-icon">'+c.icon+'</div><h3>'+c.title+'</h3><p>'+c.desc+'</p><strong>✦ '+c.reward+' CREDITS</strong><div class="contract-progress">'+Math.min(progress,c.goal)+' / '+c.goal+'</div><button data-contract="'+c.id+'" '+(claimed?'disabled':'')+'>'+(claimed?'COMPLETED':'CLAIM CONTRACT')+'</button></article>';
+    return '<article class="contract"><div class="contract-icon">'+c.icon+'</div><h3>'+c.title+'</h3><p>'+c.desc+'</p><strong>✦ '+c.reward+' BITZ</strong><div class="contract-progress">'+Math.min(progress,c.goal)+' / '+c.goal+'</div><button data-contract="'+c.id+'" '+(claimed?'disabled':'')+'>'+(claimed?'COMPLETED':'CLAIM CONTRACT')+'</button></article>';
   }).join('');
   $('contract-list').querySelectorAll('[data-contract]').forEach(b=>b.addEventListener('click',()=>claimContract(b.dataset.contract)));
 }
@@ -592,19 +611,25 @@ function claimContract(id){
   const c=CONTRACTS.find(x=>x.id===id),p=state.contracts[id];
   if(!c||p.claimed||p.progress<c.goal){toast('CONTRACT NOT COMPLETE YET');return;}
   p.claimed=true;state.credits+=c.reward;$('credits').textContent=state.credits;
-  renderContractBoard();persistProgress();toast('CONTRACT CLAIMED · +'+c.reward+' CREDITS');
+  renderContractBoard();persistProgress();toast('CONTRACT CLAIMED · +'+c.reward+' BITZ');
 }
 function grantContractProgress(id,amount){
   const p=state.contracts[id];if(!p||p.claimed)return;
   const c=CONTRACTS.find(x=>x.id===id);p.progress=Math.min(c.goal,p.progress+amount);renderContractBoard();
 }
 function renderMatchSetup(){
-  $('map-list').innerHTML=MAPS.map((m,i)=>'<button class="map-choice '+(state.map===m?'active':'')+'" data-map="'+m+'"><span class="map-thumb" style="filter:hue-rotate('+(i*45)+'deg)"></span><span>'+m+'</span></button>').join('');
-  $('map-list').querySelectorAll('[data-map]').forEach(b=>b.addEventListener('click',()=>{state.map=b.dataset.map;renderMatchSetup();}));
+  const format=FORMATS.find(x=>x.id===state.matchFormat)||FORMATS[0];
+  $('pad-format-title').textContent=format.label+' MATCH';
+  $('match-size-note').textContent=format.ffa?'3 solo players required · Everyone votes on the map.':format.size+' players required · '+(format.size/2)+' per team · Everyone votes on the map.';
+  $('match-format-footer').textContent=format.label+' · FIRST TO 5 ROUND WINS';
+  $('map-list').innerHTML=MAPS.map((m,i)=>'<div class="map-choice"><span class="map-thumb" style="filter:hue-rotate('+(i*45)+'deg)"></span><span>'+m+'</span></div>').join('');
   document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===state.mode);b.onclick=()=>{state.mode=b.dataset.mode;renderMatchSetup();};});
   const panel=$('loadout-panel');
   if(state.mode==='loadout'){
-    panel.innerHTML='<div class="loadout-card"><h3>MOVEMENT / SUPPORT GEAR</h3>'+Object.entries(GEAR).map(([slot,items])=>'<div class="gear-row"><span>'+slot.toUpperCase()+'</span><select data-gear="'+slot+'">'+items.map(item=>'<option '+(state.loadout[slot]===item?'selected':'')+'>'+item+'</option>').join('')+'</select></div>').join('')+'</div><p class="muted" style="margin-top:10px">This mode uses movement and support abilities. Your style trail is cosmetic.</p>';
+    panel.innerHTML='<div class="loadout-card"><h3>MOVEMENT / SUPPORT GEAR</h3>'+Object.entries(GEAR).map(([slot,items])=>{
+      const visible=slot==='style'?items.filter(item=>state.inventory.includes(item)):items;
+      return '<div class="gear-row"><span>'+(slot==='style'?'TRAIL STYLE':slot.toUpperCase())+'</span><select data-gear="'+slot+'">'+visible.map(item=>'<option '+(state.loadout[slot]===item?'selected':'')+'>'+item+'</option>').join('')+'</select></div>';
+    }).join('')+'</div><p class="muted" style="margin-top:10px">Choose movement/support gear and one owned cosmetic trail. Trail styles do not change match performance.</p>';
     panel.querySelectorAll('[data-gear]').forEach(sel=>sel.addEventListener('change',()=>{state.loadout[sel.dataset.gear]=sel.value;sendProfileUpdate();}));
   }else{
     panel.innerHTML='<div class="loadout-card"><h3>ADDITION · '+state.upgradePoints+' POINTS</h3><p class="muted">After each match loss, earn three points to distribute.</p><div class="upgrade-grid">'+[
@@ -623,7 +648,8 @@ function renderMatchSetup(){
   }
 }
 async function loadSession(){
-  if(!supabase){$('account-status').textContent='Supabase is not configured. Guest practice is available.';return;}
+  try{state.nickname=localStorage.getItem('worth-guest-name')||'Rookie';}catch{}
+  if(!supabase){$('account-status').textContent='Supabase is not configured. Guest practice is available.';updateAccountUI();return;}
   const {data}=await supabase.auth.getSession();
   state.session=data.session;state.user=data.session?.user||null;
   if(state.user)await loadProgress();
@@ -637,36 +663,78 @@ async function loadSession(){
 async function authenticate(kind){
   if(!supabase){toast('ACCOUNT SERVICE NOT CONFIGURED');return;}
   const email=$('auth-email').value.trim(),password=$('auth-password').value;
+  const requestedName=cleanNickname($('auth-username').value||'Rookie');
   if(!email||password.length<8){toast('ENTER EMAIL AND A PASSWORD OF AT LEAST 8 CHARACTERS');return;}
-  const response=kind==='signup'?await supabase.auth.signUp({email,password}):await supabase.auth.signInWithPassword({email,password});
+  if(kind==='signup'&&requestedName.length<3){toast('CHOOSE A USERNAME OF AT LEAST 3 CHARACTERS');return;}
+  const response=kind==='signup'
+    ? await supabase.auth.signUp({email,password,options:{data:{nickname:requestedName}}})
+    : await supabase.auth.signInWithPassword({email,password});
   if(response.error){toast(response.error.message);return;}
   state.session=response.data.session;state.user=response.data.user;
+  if(kind==='signup')state.nickname=requestedName;
   if(kind==='signup'&&!state.session){$('account-status').textContent='Check your email for the confirmation link, then sign in.';toast('CHECK YOUR EMAIL TO CONFIRM');return;}
   if(state.user){await loadProgress();updateAccountUI();toast('ACCOUNT READY');}
 }
 function updateAccountUI(){
   const status=$('account-status');
-  if(state.user){status.textContent='Signed in · '+(state.user.email||'WORTH player');$('sign-out').hidden=false;$('sign-in').hidden=true;$('sign-up').hidden=true;}
-  else{status.textContent='Play locally as a guest or sign in to sync your progress.';$('sign-out').hidden=true;$('sign-in').hidden=false;$('sign-up').hidden=false;}
+  if(state.user){
+    status.textContent='Signed in as '+state.nickname+' · '+(state.user.email||'WORTH player');
+    $('sign-out').hidden=false;$('sign-in').hidden=true;$('sign-up').hidden=true;
+  }else{
+    status.textContent='Guest · '+state.nickname+' · Sign in to sync Bitz and cosmetics.';
+    $('sign-out').hidden=true;$('sign-in').hidden=false;$('sign-up').hidden=false;
+  }
   $('connection-label').textContent=CONFIG.serverUrl?'SERVER READY':'LOCAL PRACTICE READY';
+  $('credits').textContent=state.credits;
+  if($('shop-balance'))$('shop-balance').textContent=state.credits;
+  if($('auth-username-wrap'))$('auth-username-wrap').hidden=!!state.user;
 }
 async function loadProgress(){
   if(!supabase||!state.user)return;
+  const profile=await supabase.from('profiles').select('username').eq('id',state.user.id).maybeSingle();
+  if(profile.data?.username)state.nickname=cleanNickname(profile.data.username);
+  else{
+    state.nickname=cleanNickname(state.user.user_metadata?.nickname||state.nickname);
+    const created=await supabase.from('profiles').upsert({id:state.user.id,username:state.nickname},{onConflict:'id'});
+    if(created.error)console.warn('Profile creation:',created.error.message);
+  }
   const {data,error}=await supabase.from('worth_player_data').select('*').eq('user_id',state.user.id).maybeSingle();
   if(error){console.warn(error.message);return;}
   if(data){
-    state.nickname=data.nickname||'Rookie';state.credits=data.credits||0;
+    if(!profile.data?.username)state.nickname=data.nickname||state.nickname;
+    state.credits=data.credits||0;
+    state.inventory=Array.isArray(data.inventory)&&data.inventory.length?data.inventory:['Aurora Trail'];
     state.upgrades={...state.upgrades,...(data.upgrades||{})};state.loadout={...state.loadout,...(data.loadout||{})};
     if(data.contracts)state.contracts={...state.contracts,...data.contracts};
     state.roundWinsA=data.round_wins||0;state.upgradePoints=data.addition_points||0;
-    $('credits').textContent=state.credits;renderContractBoard();renderMatchSetup();
-  }else await persistProgress();
+    $('credits').textContent=state.credits;renderContractBoard();renderMatchSetup();renderShop();updateAccountUI();
+  }else {state.inventory=['Aurora Trail'];await persistProgress();}
 }
 let saveChain=Promise.resolve();
 function persistProgress(){
   if(!supabase||!state.user)return;
-  const payload={user_id:state.user.id,nickname:state.nickname,credits:state.credits,round_wins:state.roundWinsA,addition_points:state.upgradePoints,upgrades:state.upgrades,loadout:state.loadout,contracts:state.contracts,updated_at:new Date().toISOString()};
+  const payload={user_id:state.user.id,nickname:state.nickname,credits:state.credits,round_wins:state.roundWinsA,addition_points:state.upgradePoints,upgrades:state.upgrades,loadout:state.loadout,contracts:state.contracts,inventory:state.inventory,updated_at:new Date().toISOString()};
   saveChain=saveChain.then(()=>supabase.from('worth_player_data').upsert(payload,{onConflict:'user_id'})).then(({error})=>{if(error)console.warn('Progress save:',error.message);}).catch(console.error);
+}
+function persistGuestName(){try{localStorage.setItem('worth-guest-name',state.nickname);}catch{}}
+function renderShop(){
+  const host=$('shop-items');if(!host)return;
+  $('shop-balance').textContent=state.credits;
+  host.innerHTML=SHOP_ITEMS.map(item=>{
+    const owned=state.inventory.includes(item.id),equipped=state.loadout.style===item.id;
+    return '<article class="shop-item"><div class="shop-swatch" style="--swatch:'+item.color+';background:linear-gradient(135deg,'+item.color+',rgba(8,15,32,.95))"></div><h3>'+item.id+'</h3><p>'+item.desc+'</p><strong>'+(owned?'OWNED':'✦ '+item.cost+' BITZ')+'</strong><button data-shop-item="'+item.id+'" '+(owned&&equipped?'disabled':'')+'>'+(equipped?'EQUIPPED':owned?'EQUIP':'BUY WITH BITZ')+'</button></article>';
+  }).join('');
+  host.querySelectorAll('[data-shop-item]').forEach(b=>b.addEventListener('click',()=>shopAction(b.dataset.shopItem)));
+}
+function shopAction(id){
+  const item=SHOP_ITEMS.find(x=>x.id===id);if(!item)return;
+  if(state.inventory.includes(id)){
+    state.loadout.style=id;sendProfileUpdate();renderShop();renderMatchSetup();toast(id.toUpperCase()+' EQUIPPED');return;
+  }
+  if(state.credits<item.cost){toast('NOT ENOUGH BITZ');return;}
+  state.credits-=item.cost;state.inventory.push(id);state.loadout.style=id;
+  $('credits').textContent=state.credits;persistProgress();sendProfileUpdate();renderShop();renderMatchSetup();
+  toast('PURCHASED '+id.toUpperCase());
 }
 function socketUrl(){
   const base=(CONFIG.serverUrl||'').trim().replace(/\/$/,'');
@@ -769,7 +837,7 @@ function updateRemotePlayers(players){
 }
 function msgOwnId(){return state.playerId;}
 function sendProfileUpdate(){
-  if(state.socket?.readyState===WebSocket.OPEN&&state.roomId)state.socket.send(JSON.stringify({type:'profileUpdate',loadout:state.loadout,upgrades:state.upgrades,additionPoints:state.upgradePoints}));
+  if(state.socket?.readyState===WebSocket.OPEN&&state.roomId)state.socket.send(JSON.stringify({type:'profileUpdate',loadout:state.loadout,upgrades:state.upgrades,additionPoints:state.upgradePoints,nickname:state.nickname}));
   persistProgress();
 }
 function sendInput(){
