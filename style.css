@@ -66,7 +66,7 @@ body.sprinting .stamina-track span{background:linear-gradient(90deg,#ffd782,#55e
 .menu-tile{min-height:55px;text-align:left;padding:9px 11px;background:rgba(7,14,30,.72);border:1px solid rgba(157,185,240,.2);font-size:9px;font-weight:900;letter-spacing:1.2px;color:#e9faff}
 .menu-tile:hover{border-color:var(--cyan);background:rgba(44,130,150,.18)}
 .menu-tile small{display:block;font-size:8px;letter-spacing:0;font-weight:500;color:#91a5c5;margin-top:4px}
-.pause-menu{position:fixed;z-index:30;inset:0;display:grid;place-items:center;padding:20px;background:rgba(4,8,20,.82);backdrop-filter:blur(13px)}
+.pause-menu{position:fixed;z-index:12;inset:0;display:grid;place-items:center;padding:20px;background:rgba(4,8,20,.82);backdrop-filter:blur(13px)}
 .pause-card{width:min(490px,96vw);padding:34px;background:linear-gradient(145deg,rgba(17,28,53,.98),rgba(8,14,29,.98));border:1px solid rgba(151,191,255,.25);box-shadow:0 24px 90px rgba(0,0,0,.5)}
 .pause-card h2{font:900 54px/.95 'Barlow Condensed';letter-spacing:2px;margin:0 0 22px}
 .pause-card>.primary-btn{width:100%;margin-bottom:10px}
